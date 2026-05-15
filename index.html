@@ -721,11 +721,13 @@ main {
   <div class="nav-tabs" style="overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-shrink:1;min-width:0">
     <div class="nav-tab active" onclick="showScreen('home')">🏠 Главная</div>
     <div class="nav-tab" onclick="showScreen('grammar')">📖 Грамматика</div>
+    <div class="nav-tab" onclick="showScreen('study')">🎧 Изучить</div>
     <div class="nav-tab" onclick="showScreen('trainer')">✏️ Тренажёр</div>
     <div class="nav-tab" onclick="showScreen('stats')">📊 Статистика</div>
     <div class="nav-tab" onclick="showScreen('dict')">📚 Словарь</div>
     <div class="nav-tab" onclick="showScreen('groups')">🔀 Группы</div>
     <div class="nav-tab" onclick="showScreen('numbers')">🔢 Числа</div>
+    <div class="nav-tab" onclick="showScreen('phrases')">📝 Фразы</div>
     <div class="nav-tab" onclick="logoutProfile()" style="color:var(--text-dim);white-space:nowrap">⇠ Выйти</div>
   </div>
 </nav>
@@ -735,6 +737,7 @@ main {
   <div class="bottom-nav-item active" id="bn-home" onclick="showScreen('home')">
     <span class="bn-icon">🏠</span><span>Главная</span>
   </div>
+  <div class="bottom-nav-item" id="bn-study" onclick="showScreen('study')"><span class="bn-icon">🎧</span><span>Изучить</span></div>
   <div class="bottom-nav-item" id="bn-trainer" onclick="showScreen('trainer')">
     <span class="bn-icon">✏️</span><span>Тренажёр</span>
   </div>
@@ -753,6 +756,7 @@ main {
 <div id="more-menu" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:300;background:var(--surface);border-top:1px solid var(--border);border-radius:16px 16px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));">
   <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div onclick="showScreen('phrases');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📝</span>Фразы</div>
     <div onclick="showScreen('dict');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📚</span>Словарь</div>
     <div onclick="showScreen('stats');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📊</span>Статистика</div>
     <div onclick="showScreen('groups');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">🔀</span>Группы</div>
@@ -1548,6 +1552,136 @@ main {
       <button class="hint-btn" onclick="gShowHint()">💡 Подсказка (−1)</button>
     </div>
   </div>
+</div>
+
+<!-- STUDY SCREEN -->
+<div id="screen-study" class="screen">
+
+  <!-- Controls -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:center;">
+    <select class="select-control" id="study-group" onchange="renderStudyScreen()">
+      <option value="all">Все группы</option>
+      <option value="er">-ER глаголы</option>
+      <option value="ir">-IR глаголы</option>
+      <option value="re">-RE глаголы</option>
+      <option value="irr">Неправильные</option>
+      <option value="ref">Возвратные</option>
+    </select>
+    <select class="select-control" id="study-tense">
+      <option value="present">Présent</option>
+      <option value="passe">Passé composé</option>
+      <option value="imparfait">Imparfait</option>
+      <option value="futur">Futur simple</option>
+      <option value="all">Все времена</option>
+    </select>
+    <button class="btn btn-secondary" onclick="openStudyVerbPicker()" style="white-space:nowrap">📋 Выбрать глаголы</button>
+    <button class="btn btn-primary" onclick="startStudySession()" style="margin-left:auto">▶ Начать изучение</button>
+  </div>
+
+  <div id="study-selection-banner" style="display:none;background:var(--ir-dim);border:1px solid var(--ir);border-radius:8px;padding:10px 18px;font-size:0.82rem;color:var(--ir);margin-bottom:20px;align-items:center;justify-content:space-between;">
+    <span id="study-selection-label">Выбрано: 0 глаголов</span>
+    <button onclick="clearStudySelection()" style="background:none;border:1px solid var(--ir);border-radius:6px;padding:4px 12px;color:var(--ir);cursor:pointer;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;margin-left:16px">✕ Сбросить</button>
+  </div>
+
+  <!-- Verb list to study -->
+  <div id="study-verb-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:24px;"></div>
+
+  <!-- Study session (hidden until started) -->
+  <div id="study-session" style="display:none;">
+
+    <!-- Progress -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <button onclick="stopStudySession()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85rem;padding:0;font-family:'IBM Plex Sans',sans-serif">← Назад</button>
+      <div id="study-progress-label" style="font-size:0.78rem;color:var(--text-muted)">1 / 6</div>
+      <button onclick="startTrainerFromStudy()" class="btn btn-secondary" style="padding:6px 14px;font-size:0.78rem">✏️ Проверить себя</button>
+    </div>
+    <div class="progress-bar-wrap" style="margin-bottom:24px;">
+      <div class="progress-bar-fill" id="study-progress-bar" style="width:0%"></div>
+    </div>
+
+    <!-- Current form card -->
+    <div class="trainer-card" id="study-card" style="min-height:260px;cursor:pointer;" onclick="studyNext()">
+      <div class="group-badge" id="study-badge">—</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:1.1rem;color:var(--text-muted);margin-bottom:8px" id="study-inf">—</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.85rem;color:var(--text-muted);margin-bottom:4px" id="study-tense-label">—</div>
+
+      <!-- Pronoun + form -->
+      <div style="display:flex;align-items:baseline;gap:12px;justify-content:center;margin:16px 0 8px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:1.1rem;color:var(--accent);min-width:60px;text-align:right" id="study-pronoun">—</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.4rem;color:var(--text);line-height:1" id="study-form">—</div>
+        <button onclick="event.stopPropagation();speakStudyCurrent()" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0">🔊</button>
+      </div>
+
+      <div style="font-size:0.8rem;color:var(--text-dim);font-style:italic;margin-top:8px" id="study-example"></div>
+      <div style="font-size:0.72rem;color:var(--text-dim);margin-top:20px">нажми на карточку → следующая форма</div>
+    </div>
+
+    <!-- Auto-play controls -->
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap;">
+      <button id="study-auto-btn" class="btn btn-secondary" onclick="toggleStudyAuto()">⏵ Авто-режим</button>
+      <select class="select-control" id="study-speed" style="width:auto">
+        <option value="2000">Пауза 2 сек</option>
+        <option value="3000" selected>Пауза 3 сек</option>
+        <option value="5000">Пауза 5 сек</option>
+        <option value="8000">Пауза 8 сек</option>
+      </select>
+    </div>
+
+    <!-- Verb navigation -->
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap;" id="study-verb-nav"></div>
+  </div>
+</div>
+
+<!-- PHRASES SCREEN -->
+<div id="screen-phrases" class="screen">
+
+  <!-- Filters -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:center;">
+    <select class="select-control" id="ph-group" onchange="renderPhrasesScreen()">
+      <option value="all">Все группы</option>
+      <option value="er">-ER глаголы</option>
+      <option value="ir">-IR глаголы</option>
+      <option value="re">-RE глаголы</option>
+      <option value="irr">Неправильные</option>
+      <option value="ref">Возвратные</option>
+    </select>
+    <select class="select-control" id="ph-tense" onchange="renderPhrasesScreen()">
+      <option value="all">Все времена</option>
+      <option value="present">Présent</option>
+      <option value="passe">Passé composé</option>
+      <option value="imparfait">Imparfait</option>
+      <option value="futur">Futur simple</option>
+    </select>
+    <select class="select-control" id="ph-verb" onchange="renderPhrasesScreen()">
+      <option value="all">Все глаголы</option>
+    </select>
+    <div id="ph-count" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto"></div>
+  </div>
+
+  <!-- Score -->
+  <div class="score-display" style="margin-bottom:20px;">
+    <div class="score-item"><div class="num score-good" id="phscore-good">0</div><div class="lbl">верно</div></div>
+    <div class="score-item"><div class="num score-bad" id="phscore-bad">0</div><div class="lbl">ошибок</div></div>
+    <div class="score-item"><div class="num score-streak" id="phscore-streak">0</div><div class="lbl">серия</div></div>
+  </div>
+
+  <!-- Phrase card -->
+  <div class="trainer-card" id="ph-card" style="min-height:200px;">
+    <div class="group-badge badge-er" id="ph-badge">—</div>
+    <div style="font-family:'Playfair Display',serif;font-size:1.5rem;line-height:1.6;text-align:center;margin:16px 0;color:var(--text)" id="ph-sentence">—</div>
+    <div style="font-size:0.78rem;color:var(--text-dim);font-style:italic" id="ph-ru" onclick="this.style.opacity=this.style.opacity==='0'?'1':'0'" style="opacity:0;cursor:pointer">—</div>
+    <div style="font-size:0.72rem;color:var(--text-dim);margin-top:6px">нажми на перевод, чтобы показать</div>
+  </div>
+
+  <!-- Answer -->
+  <div class="answer-area" style="margin-top:16px;">
+    <input type="text" class="answer-input" id="ph-input"
+      placeholder="вставь форму глагола..."
+      autocomplete="off" autocorrect="off" spellcheck="false"
+      onkeydown="if(event.key==='Enter')checkPhrase()">
+    <button class="btn btn-primary" onclick="checkPhrase()">Проверить</button>
+  </div>
+  <div id="ph-feedback" style="min-height:52px;display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
 </div>
 
 <!-- NUMBERS SCREEN -->
@@ -2445,7 +2579,7 @@ VERBS.push(...[
 // ════════════════════════════════════════════════
 const BN_MAP = {
   home:'bn-home', trainer:'bn-trainer', grammar:'bn-grammar',
-  numbers:'bn-numbers', dict:'bn-more', stats:'bn-more', groups:'bn-more'
+  study:'bn-study', numbers:'bn-numbers', dict:'bn-more', stats:'bn-more', groups:'bn-more'
 };
 
 function updateBottomNav(id) {
@@ -2595,7 +2729,7 @@ function showScreen(id) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('screen-' + id).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(t => {
-    if (t.textContent.includes({home:'Главная',grammar:'Грамматика',trainer:'Тренажёр',stats:'Статистика',dict:'Словарь',groups:'Группы',numbers:'Числа'}[id] || '')) {
+    if (t.textContent.includes({home:'Главная',grammar:'Грамматика',trainer:'Тренажёр',study:'Изучить',stats:'Статистика',dict:'Словарь',groups:'Группы',numbers:'Числа',phrases:'Фразы'}[id] || '')) {
       t.classList.add('active');
     }
   });
@@ -2606,6 +2740,8 @@ function showScreen(id) {
   if (id === 'dict') renderDict();
   if (id === 'groups') { renderGroupsHome(); backToGroups(); }
   if (id === 'numbers') renderNumbersScreen();
+  if (id === 'study') renderStudyScreen();
+  if (id === 'phrases') renderPhrasesScreen();
 }
 
 function openGrammar(tense) {
@@ -3278,6 +3414,7 @@ function selectDictVerb(id) {
         ${pctLabel}
         <br><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="startTrainerVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">▶ Тренировать</button>
+          <button class="btn btn-secondary" onclick="studyOneVerb('${verb.id}');showScreen('study')" style="padding:7px 14px;font-size:0.75rem">🎧 Изучить</button>
           ${verb.custom ? `<button class="btn btn-danger" onclick="deleteCustomVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">🗑 Удалить</button>` : ''}
         </div>
       </div>
@@ -3594,7 +3731,381 @@ function toggleRule() {
 
 
 // ════════════════════════════════════════════════
-// NUMBERS TRAINER
+// STUDY MODE
+// ════════════════════════════════════════════════
+let studySelectedIds = new Set();
+let studyVerbs = [];       // verbs in current session
+let studyVerbIdx = 0;      // current verb index
+let studyFormIdx = 0;      // current form index (0–5)
+let studyTenses = [];      // tenses to study
+let studyAutoTimer = null;
+let studyAutoRunning = false;
+
+function getStudyVerbs() {
+  const group = document.getElementById('study-group').value;
+  let verbs = VERBS.filter(v => v.conj);
+  if (studySelectedIds.size > 0) {
+    verbs = verbs.filter(v => studySelectedIds.has(v.id));
+  } else {
+    if (group !== 'all') verbs = verbs.filter(v => v.group === group);
+  }
+  return verbs.sort((a,b) => a.inf.localeCompare(b.inf, 'fr'));
+}
+
+function getStudyTenses() {
+  const t = document.getElementById('study-tense').value;
+  return t === 'all' ? ['present','passe','imparfait','futur'] : [t];
+}
+
+function renderStudyScreen() {
+  const verbs = getStudyVerbs();
+  const badgeColor = {er:'var(--er)',ir:'var(--ir)',re:'var(--re)',irr:'var(--irr)',ref:'var(--ref)'};
+  const badgeBg    = {er:'var(--er-dim)',ir:'var(--ir-dim)',re:'var(--re-dim)',irr:'var(--irr-dim)',ref:'var(--ref-dim)'};
+
+  document.getElementById('study-verb-list').innerHTML = verbs.map(v => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:border-color 0.2s"
+      onclick="studyOneVerb('${v.id}')"
+      onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="font-style:italic;font-size:0.95rem;margin-bottom:4px">${v.inf}</div>
+      <div style="font-size:0.73rem;color:var(--text-muted);margin-bottom:8px">${v.meaning}</div>
+      <span style="font-size:0.6rem;padding:2px 7px;border-radius:8px;background:${badgeBg[v.group]};color:${badgeColor[v.group]};font-family:'IBM Plex Mono',monospace;text-transform:uppercase">${v.group.toUpperCase()}</span>
+    </div>`).join('') || '<div style="color:var(--text-muted);padding:20px;text-align:center">Нет глаголов для выбранных фильтров</div>';
+}
+
+function studyOneVerb(id) {
+  const verb = VERBS.find(v => v.id === id);
+  if (!verb) return;
+  studyVerbs = [verb];
+  studyTenses = getStudyTenses();
+  studyVerbIdx = 0;
+  studyFormIdx = 0;
+  showStudySession();
+}
+
+function startStudySession() {
+  studyVerbs = getStudyVerbs();
+  if (!studyVerbs.length) return;
+  studyTenses = getStudyTenses();
+  studyVerbIdx = 0;
+  studyFormIdx = 0;
+  showStudySession();
+}
+
+function showStudySession() {
+  document.getElementById('study-verb-list').style.display = 'none';
+  document.getElementById('study-session').style.display = 'block';
+  document.querySelectorAll('.trainer-controls, #study-selection-banner, #study-group, #study-tense, .btn').forEach(() => {});
+  renderStudyVerbNav();
+  renderStudyCard();
+}
+
+function stopStudySession() {
+  if (studyAutoTimer) { clearInterval(studyAutoTimer); studyAutoTimer = null; }
+  studyAutoRunning = false;
+  document.getElementById('study-auto-btn').textContent = '⏵ Авто-режим';
+  document.getElementById('study-verb-list').style.display = 'grid';
+  document.getElementById('study-session').style.display = 'none';
+  renderStudyScreen();
+}
+
+function renderStudyVerbNav() {
+  document.getElementById('study-verb-nav').innerHTML = studyVerbs.map((v,i) =>
+    `<button onclick="jumpStudyVerb(${i})" style="padding:5px 12px;border-radius:16px;font-size:0.75rem;cursor:pointer;border:1px solid ${i===studyVerbIdx?'var(--accent)':'var(--border)'};background:${i===studyVerbIdx?'var(--accent)':'var(--surface2)'};color:${i===studyVerbIdx?'#0e0e10':'var(--text-muted)'};font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s">${v.inf}</button>`
+  ).join('');
+}
+
+function jumpStudyVerb(idx) {
+  studyVerbIdx = idx;
+  studyFormIdx = 0;
+  renderStudyCard();
+  renderStudyVerbNav();
+}
+
+// Returns all {tense, pronounIdx, form, pronoun} steps for current verb
+function getStudySteps(verb) {
+  const steps = [];
+  for (const tense of studyTenses) {
+    for (let i = 0; i < 6; i++) {
+      let form;
+      if (tense === 'passe') {
+        const aux = verb.aux === 'avoir'
+          ? ['ai','as','a','avons','avez','ont'][i]
+          : ['suis','es','est','sommes','êtes','sont'][i];
+        form = elide(PRONOUNS[i] + ' ' + aux + ' ' + verb.pp);
+      } else if (verb.reflexive) {
+        const f = verb.conj[tense]?.[i] || '';
+        const rp = getReflexivePronoun(i, f);
+        form = elide(PRONOUNS[i] + ' ' + rp + f);
+      } else {
+        const f = verb.conj[tense]?.[i];
+        if (!f) continue;
+        form = elide(PRONOUNS[i] + ' ' + f);
+      }
+      steps.push({ tense, pronounIdx: i, form, pronoun: PRONOUNS[i] });
+    }
+  }
+  return steps;
+}
+
+function renderStudyCard() {
+  const verb = studyVerbs[studyVerbIdx];
+  if (!verb) return;
+
+  const steps = getStudySteps(verb);
+  if (!steps.length) return;
+  if (studyFormIdx >= steps.length) studyFormIdx = 0;
+
+  const step = steps[studyFormIdx];
+  const total = steps.length;
+
+  // Progress
+  const globalStep = studyVerbIdx * steps.length + studyFormIdx;
+  const globalTotal = studyVerbs.length * steps.length;
+  document.getElementById('study-progress-label').textContent =
+    `Глагол ${studyVerbIdx+1}/${studyVerbs.length} · Форма ${studyFormIdx+1}/${total}`;
+  document.getElementById('study-progress-bar').style.width =
+    Math.round(globalStep / globalTotal * 100) + '%';
+
+  // Badge
+  const badgeEl = document.getElementById('study-badge');
+  badgeEl.className = 'group-badge ' + (BADGE_CLASS[verb.group] || 'badge-irr');
+  badgeEl.textContent = GROUP_LABELS[verb.group] + ' · ' + TENSE_NAMES[step.tense];
+
+  document.getElementById('study-inf').textContent = verb.inf + ' — ' + verb.meaning;
+  document.getElementById('study-tense-label').textContent = TENSE_NAMES[step.tense];
+
+  // Split form into pronoun + verb
+  const parts = step.form.split(' ');
+  const pronounPart = parts[0];
+  const verbPart = parts.slice(1).join(' ');
+  document.getElementById('study-pronoun').textContent = pronounPart;
+  document.getElementById('study-form').textContent = verbPart;
+
+  // Example
+  const ex = buildExample(verb, step.tense, step.pronounIdx);
+  document.getElementById('study-example').textContent = ex;
+
+  // Auto-speak
+  speak(step.form);
+}
+
+function speakStudyCurrent() {
+  const verb = studyVerbs[studyVerbIdx];
+  if (!verb) return;
+  const steps = getStudySteps(verb);
+  if (steps[studyFormIdx]) speak(steps[studyFormIdx].form);
+}
+
+function studyNext() {
+  const verb = studyVerbs[studyVerbIdx];
+  if (!verb) return;
+  const steps = getStudySteps(verb);
+  studyFormIdx++;
+  if (studyFormIdx >= steps.length) {
+    studyFormIdx = 0;
+    studyVerbIdx++;
+    if (studyVerbIdx >= studyVerbs.length) {
+      studyVerbIdx = 0; // loop
+    }
+    renderStudyVerbNav();
+  }
+  renderStudyCard();
+}
+
+function toggleStudyAuto() {
+  studyAutoRunning = !studyAutoRunning;
+  const btn = document.getElementById('study-auto-btn');
+  if (studyAutoRunning) {
+    btn.textContent = '⏸ Пауза';
+    btn.style.background = 'var(--accent)';
+    btn.style.color = '#0e0e10';
+    runStudyAuto();
+  } else {
+    btn.textContent = '⏵ Авто-режим';
+    btn.style.background = '';
+    btn.style.color = '';
+    if (studyAutoTimer) { clearTimeout(studyAutoTimer); studyAutoTimer = null; }
+  }
+}
+
+function runStudyAuto() {
+  if (!studyAutoRunning) return;
+  const delay = parseInt(document.getElementById('study-speed').value) || 3000;
+  studyAutoTimer = setTimeout(() => {
+    studyNext();
+    runStudyAuto();
+  }, delay);
+}
+
+function startTrainerFromStudy() {
+  // Launch trainer with same verb selection
+  if (studySelectedIds.size > 0) {
+    selectedVerbIds = new Set(studySelectedIds);
+    const n = selectedVerbIds.size;
+    const banner = document.getElementById('custom-selection-banner');
+    banner.style.display = 'flex';
+    document.getElementById('custom-selection-label').textContent =
+      `📋 Тренировка: ${n} глагол${n===1?'':n<5?'а':'ов'} выбрано`;
+  } else if (studyVerbs.length === 1) {
+    // Single verb from studyOneVerb
+    selectedVerbIds = new Set([studyVerbs[0].id]);
+    const banner = document.getElementById('custom-selection-banner');
+    banner.style.display = 'flex';
+    document.getElementById('custom-selection-label').textContent =
+      `📋 Тренировка: ${studyVerbs[0].inf}`;
+  } else {
+    selectedVerbIds.clear();
+    document.getElementById('custom-selection-banner').style.display = 'none';
+    // Apply group filter
+    document.getElementById('filter-group').value =
+      document.getElementById('study-group').value;
+  }
+  // Apply tense filter
+  const st = document.getElementById('study-tense').value;
+  document.getElementById('filter-tense').value = st === 'all' ? 'all' : st;
+  stopStudySession();
+  showScreen('trainer');
+  resetTrainer();
+}
+
+// Study verb picker (reuses same UI as trainer picker)
+let studyPickerOpen = false;
+function openStudyVerbPicker() {
+  studyPickerOpen = true;
+  // Temporarily swap selectedVerbIds with studySelectedIds
+  const saved = selectedVerbIds;
+  selectedVerbIds = studySelectedIds;
+  openVerbPicker();
+  // Override apply button
+  const applyBtn = document.querySelector('#verb-picker-modal .btn-primary');
+  if (applyBtn) {
+    applyBtn.textContent = 'Применить →';
+    applyBtn.onclick = () => {
+      studySelectedIds = new Set(selectedVerbIds);
+      selectedVerbIds = saved;
+      closeVerbPicker();
+      const n = studySelectedIds.size;
+      const banner = document.getElementById('study-selection-banner');
+      banner.style.display = n > 0 ? 'flex' : 'none';
+      if (n > 0) document.getElementById('study-selection-label').textContent =
+        `📋 Выбрано: ${n} глагол${n===1?'':n<5?'а':'ов'}`;
+      renderStudyScreen();
+    };
+  }
+}
+
+function clearStudySelection() {
+  studySelectedIds.clear();
+  document.getElementById('study-selection-banner').style.display = 'none';
+  renderStudyScreen();
+}
+// ════════════════════════════════════════════════
+// PHRASES TRAINER
+// ════════════════════════════════════════════════
+let phGood = 0, phBad = 0, phStreak = 0;
+let currentPhrase = null;
+
+function getFilteredPhrases() {
+  const group  = document.getElementById('ph-group')?.value  || 'all';
+  const tense  = document.getElementById('ph-tense')?.value  || 'all';
+  const verbId = document.getElementById('ph-verb')?.value   || 'all';
+  return PHRASES.filter(p => {
+    if (tense  !== 'all' && p.tense  !== tense)  return false;
+    if (verbId !== 'all' && p.verbId !== verbId) return false;
+    if (group  !== 'all') {
+      const verb = VERBS.find(v => v.id === p.verbId);
+      if (!verb || verb.group !== group) return false;
+    }
+    return true;
+  });
+}
+
+function renderPhrasesScreen() {
+  const group = document.getElementById('ph-group')?.value || 'all';
+  const verbSel = document.getElementById('ph-verb');
+  if (verbSel) {
+    const verbs = [...new Set(PHRASES.map(p => p.verbId))]
+      .map(id => VERBS.find(v => v.id === id))
+      .filter(v => v && (group === 'all' || v.group === group))
+      .sort((a,b) => a.inf.localeCompare(b.inf, 'fr'));
+    const cur = verbSel.value;
+    verbSel.innerHTML = '<option value="all">Все глаголы</option>' +
+      verbs.map(v => `<option value="${v.id}" ${v.id===cur?'selected':''}>${v.inf}</option>`).join('');
+  }
+  const pool = getFilteredPhrases();
+  const cnt = document.getElementById('ph-count');
+  if (cnt) cnt.textContent = pool.length + ' фраз';
+  phGood = phBad = phStreak = 0;
+  document.getElementById('phscore-good').textContent  = '0';
+  document.getElementById('phscore-bad').textContent   = '0';
+  document.getElementById('phscore-streak').textContent = '0';
+  nextPhrase();
+}
+
+function nextPhrase() {
+  const pool = getFilteredPhrases();
+  if (!pool.length) {
+    document.getElementById('ph-sentence').textContent = 'Нет фраз для выбранных фильтров';
+    return;
+  }
+  currentPhrase = pool[Math.floor(Math.random() * pool.length)];
+  const verb = VERBS.find(v => v.id === currentPhrase.verbId);
+  const badge = document.getElementById('ph-badge');
+  if (badge && verb) {
+    badge.className = 'group-badge ' + (BADGE_CLASS[verb.group] || 'badge-irr');
+    badge.textContent = (verb?.inf || '') + ' · ' + TENSE_NAMES[currentPhrase.tense];
+  }
+  const html = currentPhrase.fr.replace('___',
+    '<span style="display:inline-block;min-width:60px;border-bottom:2px solid var(--accent);color:var(--accent)">___</span>');
+  document.getElementById('ph-sentence').innerHTML = html;
+  const ru = document.getElementById('ph-ru');
+  ru.textContent = currentPhrase.ru;
+  ru.style.opacity = '0';
+  ru.onclick = () => { ru.style.opacity = ru.style.opacity === '0' ? '1' : '0'; };
+  const inp = document.getElementById('ph-input');
+  inp.value = ''; inp.className = 'answer-input'; inp.dataset.answered = '0'; inp.focus();
+  document.getElementById('ph-feedback').innerHTML = '';
+}
+
+function checkPhrase() {
+  const inp = document.getElementById('ph-input');
+  if (!inp || inp.dataset.answered === '1') return;
+  inp.dataset.answered = '1';
+  const correct = currentPhrase.answer;
+  const userNorm = normalize(inp.value.trim());
+  const isCorrect = userNorm === normalize(correct) || userNorm === normalize(correct.replace(/-/g,' '));
+  inp.className = 'answer-input ' + (isCorrect ? 'correct' : 'wrong');
+  const full = currentPhrase.fr.replace('___', correct);
+  speak(full);
+  const html = currentPhrase.fr.replace('___',
+    `<span style="color:${isCorrect?'var(--score-good)':'var(--score-bad)'};font-weight:600">${correct}</span>`);
+  document.getElementById('ph-sentence').innerHTML = html;
+  document.getElementById('ph-ru').style.opacity = '1';
+  const fb = document.getElementById('ph-feedback');
+  if (isCorrect) {
+    phGood++; phStreak++;
+    fb.innerHTML = `<div class="feedback-msg correct">✓ Верно!</div>
+      <button class="btn btn-primary" style="padding:8px 20px;font-size:0.85rem" onclick="nextPhrase()">Следующая →</button>`;
+  } else {
+    phBad++; phStreak = 0;
+    const safe = full.replace(/'/g,"\\'");
+    fb.innerHTML = `<div class="feedback-msg wrong">✗ <strong>${correct}</strong></div>
+      <button class="btn btn-secondary" style="padding:8px 16px;font-size:0.8rem" onclick="nextPhrase()">Следующая</button>
+      <button onclick="speak('${safe}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;cursor:pointer;color:var(--text-muted);font-size:0.85rem">🔊</button>`;
+  }
+  document.getElementById('phscore-good').textContent   = phGood;
+  document.getElementById('phscore-bad').textContent    = phBad;
+  document.getElementById('phscore-streak').textContent = phStreak;
+  if (currentPhrase.verbId) {
+    const stats = loadStats();
+    const key = 'ph_' + currentPhrase.verbId;
+    if (!stats[key]) stats[key] = {total:0,correct:0};
+    stats[key].total++;
+    if (isCorrect) stats[key].correct++;
+    saveStats(stats);
+  }
+}
+
 // ════════════════════════════════════════════════
 
 // French number → words (supports 0–999999)
@@ -3980,14 +4491,13 @@ function deleteCustomVerb(id) {
 }
 
 // ════════════════════════════════════════════════
-// SPEECH — Web Speech API (French TTS)
+// SPEECH — Multi-engine TTS (Web Speech + Google TTS fallback)
 // ════════════════════════════════════════════════
 let ttsVoice = null;
+let ttsAudio = null;
 
 function pickFrenchVoice() {
-  const voices = speechSynthesis.getVoices();
-  if (!voices.length) return null;
-  // Priority: fr-FR local → fr-FR any → fr-* any → null
+  const voices = (window.speechSynthesis?.getVoices()) || [];
   return voices.find(v => v.lang === 'fr-FR' && v.localService)
       || voices.find(v => v.lang === 'fr-FR')
       || voices.find(v => v.lang.startsWith('fr-'))
@@ -3995,29 +4505,46 @@ function pickFrenchVoice() {
       || null;
 }
 
+function hasFrenchVoice() {
+  if (!ttsVoice) ttsVoice = pickFrenchVoice();
+  return !!(ttsVoice && ttsVoice.lang.startsWith('fr'));
+}
+
 function initSpeech() {
   if (!window.speechSynthesis) return;
-  // Voices may load async — try immediately and on voiceschanged
   ttsVoice = pickFrenchVoice();
-  speechSynthesis.onvoiceschanged = () => {
-    ttsVoice = pickFrenchVoice();
-  };
-  // Some browsers (mobile) need a trigger
+  speechSynthesis.onvoiceschanged = () => { ttsVoice = pickFrenchVoice(); };
   setTimeout(() => { ttsVoice = ttsVoice || pickFrenchVoice(); }, 500);
   setTimeout(() => { ttsVoice = ttsVoice || pickFrenchVoice(); }, 1500);
 }
 
-function speak(text) {
-  if (!text || !window.speechSynthesis) return;
+function speakViaWebSpeech(text) {
+  if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
   const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = 'fr-FR'; // always set lang regardless of voice
+  utt.lang = 'fr-FR';
   utt.rate = 0.88;
   utt.pitch = 1;
-  // Re-try picking voice at speak time in case it loaded late
-  if (!ttsVoice) ttsVoice = pickFrenchVoice();
   if (ttsVoice) utt.voice = ttsVoice;
   speechSynthesis.speak(utt);
+}
+
+function speakViaGoogle(text) {
+  const url = 'https://translate.google.com/translate_tts?ie=UTF-8&q='
+    + encodeURIComponent(text) + '&tl=fr&client=tw-ob';
+  if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
+  ttsAudio = new Audio(url);
+  ttsAudio.volume = 1;
+  ttsAudio.play().catch(() => speakViaWebSpeech(text));
+}
+
+function speak(text) {
+  if (!text) return;
+  if (hasFrenchVoice()) {
+    speakViaWebSpeech(text);
+  } else {
+    speakViaGoogle(text);
+  }
 }
 
 initSpeech();
