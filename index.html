@@ -666,7 +666,23 @@ main {
   margin-bottom: 6px !important;
 }
 
-/* ── KEYBOARD TOGGLE ── */
+.tts-engine-btn {
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-family: 'IBM Plex Sans', sans-serif;
+  transition: all 0.2s;
+}
+.tts-engine-btn.active {
+  background: var(--accent);
+  color: #0e0e10;
+  border-color: var(--accent);
+  font-weight: 500;
+}
 .kb-toggle-btn {
   background: none;
   border: 1px solid var(--border);
@@ -926,6 +942,17 @@ main {
     <div onclick="showScreen('stats');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📊</span>Статистика</div>
     <div onclick="showScreen('groups');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">🔀</span>Группы</div>
     <div onclick="logoutProfile()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">👤</span>Профиль</div>
+  </div>
+  <!-- TTS selector -->
+  <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px">🔊 Движок озвучки</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;" id="tts-engine-btns">
+      <button onclick="setTTSEngine('auto')"   class="tts-engine-btn" data-engine="auto">Авто</button>
+      <button onclick="setTTSEngine('rv')"     class="tts-engine-btn" data-engine="rv">ResponsiveVoice</button>
+      <button onclick="setTTSEngine('google')" class="tts-engine-btn" data-engine="google">Google TTS</button>
+      <button onclick="setTTSEngine('webspeech')" class="tts-engine-btn" data-engine="webspeech">Браузер</button>
+    </div>
+    <div style="font-size:0.68rem;color:var(--text-dim);margin-top:8px">Если слышите английский — попробуйте Google TTS</div>
   </div>
 </div>
 <div id="more-overlay" onclick="closeMoreMenu()" style="display:none;position:fixed;inset:0;z-index:250;background:rgba(0,0,0,0.5)"></div>
@@ -9203,7 +9230,21 @@ function closeMoreMenu() {
   document.getElementById('more-overlay').style.display = 'none';
 }
 
-// ── Keyboard mode toggle ──
+function setTTSEngine(engine) {
+  localStorage.setItem('ttsEngine', engine);
+  document.querySelectorAll('.tts-engine-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.engine === engine);
+  });
+  // Test it
+  speak('bonjour');
+}
+
+function initTTSEngineUI() {
+  const engine = localStorage.getItem('ttsEngine') || 'auto';
+  document.querySelectorAll('.tts-engine-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.engine === engine);
+  });
+}
 let frKbEnabled = localStorage.getItem('frKbEnabled') !== '0';
 
 function applyKbMode() {
@@ -11611,40 +11652,65 @@ function speakViaWebSpeech(text) {
   speechSynthesis.speak(utt);
 }
 
-function speakViaGoogle(text, fallback) {
+function speakViaGoogleTTS(text, onFail) {
   if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
-  if (window.speechSynthesis) speechSynthesis.cancel();
-
-  // Try ResponsiveVoice first (French guaranteed)
-  if (window.responsiveVoice) {
-    responsiveVoice.speak(text, 'French Female', { rate: 0.9 });
-    return;
-  }
-
   const token = ++ttsToken;
-  const url = 'https://translate.google.com/translate_tts?ie=UTF-8&q='
-    + encodeURIComponent(text) + '&tl=fr&client=tw-ob';
-  const audio = new Audio(url);
-  audio.volume = 1;
-  ttsAudio = audio;
-  audio.play().catch(() => {
-    if (ttsToken === token && fallback) fallback();
-  });
+  // Try multiple Google TTS endpoints
+  const urls = [
+    'https://translate.google.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent(text) + '&tl=fr&client=tw-ob',
+    'https://translate.googleapis.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent(text) + '&tl=fr&client=gtx',
+  ];
+  function tryUrl(i) {
+    if (i >= urls.length) { if (onFail) onFail(); return; }
+    const audio = new Audio(urls[i]);
+    audio.volume = 1;
+    ttsAudio = audio;
+    audio.play().catch(() => {
+      if (ttsToken === token) tryUrl(i + 1);
+    });
+    // If audio loads but is very short (wrong lang), try next
+    audio.addEventListener('loadedmetadata', () => {
+      if (audio.duration < 0.3 && ttsToken === token) { audio.pause(); tryUrl(i + 1); }
+    });
+  }
+  tryUrl(0);
 }
 
 function speak(text) {
   if (!text) return;
+  const engine = localStorage.getItem('ttsEngine') || 'auto';
+
+  if (engine === 'webspeech') {
+    speakViaWebSpeech(text); return;
+  }
+  if (engine === 'google') {
+    speakViaGoogleTTS(text, () => speakViaWebSpeech(text)); return;
+  }
+  if (engine === 'rv' && window.responsiveVoice && responsiveVoice.voiceSupport()) {
+    if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
+    responsiveVoice.cancel();
+    responsiveVoice.speak(text, 'French Female', {
+      rate: 0.9,
+      onerror: () => speakViaGoogleTTS(text, () => speakViaWebSpeech(text))
+    });
+    return;
+  }
+  // auto: RV → Google → WebSpeech
   if (window.responsiveVoice && responsiveVoice.voiceSupport()) {
     if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
     responsiveVoice.cancel();
-    responsiveVoice.speak(text, 'French Female', { rate: 0.9 });
+    responsiveVoice.speak(text, 'French Female', {
+      rate: 0.9,
+      onerror: () => speakViaGoogleTTS(text, () => speakViaWebSpeech(text))
+    });
   } else {
-    speakViaGoogle(text, () => speakViaWebSpeech(text));
+    speakViaGoogleTTS(text, () => speakViaWebSpeech(text));
   }
 }
 
 initSpeech();
 applyKbMode();
+initTTSEngineUI();
 // ════════════════════════════════════════════════
 // Show profile screen on start
 document.getElementById("main-app").style.display = "none";
