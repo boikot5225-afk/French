@@ -683,6 +683,7 @@ main {
   border-color: var(--accent);
   font-weight: 500;
 }
+
 .kb-toggle-btn {
   background: none;
   border: 1px solid var(--border);
@@ -908,7 +909,10 @@ main {
     <div class="nav-tab" onclick="showScreen('dict')">📚 Словарь</div>
     <div class="nav-tab" onclick="showScreen('groups')">🔀 Группы</div>
     <div class="nav-tab" onclick="showScreen('numbers')">🔢 Числа</div>
+    <div class="nav-tab" onclick="showScreen('changelog')" style="white-space:nowrap">📋 Обновления</div>
     <div class="nav-tab" onclick="showScreen('phrases')">📝 Фразы</div>
+    <div class="nav-tab" onclick="showProfileManage()" style="white-space:nowrap">👤 Профиль</div>
+    <div class="nav-tab" onclick="toggleMoreMenu()" style="white-space:nowrap">⋯ Ещё</div>
     <div class="nav-tab" onclick="logoutProfile()" style="color:var(--text-dim);white-space:nowrap">⇠ Выйти</div>
   </div>
 </nav>
@@ -938,10 +942,12 @@ main {
   <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
     <div onclick="showScreen('phrases');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📝</span>Фразы</div>
+    <div onclick="showScreen('changelog');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📋</span>Обновления</div>
     <div onclick="showScreen('dict');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📚</span>Словарь</div>
     <div onclick="showScreen('stats');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📊</span>Статистика</div>
     <div onclick="showScreen('groups');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">🔀</span>Группы</div>
-    <div onclick="logoutProfile()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">👤</span>Профиль</div>
+    <div onclick="logoutProfile();closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">👤</span>Профиль</div>
+    <div onclick="logoutProfile()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:#e05555"><span style="font-size:1.6rem">⇠</span>Выйти</div>
   </div>
   <!-- TTS selector -->
   <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
@@ -953,11 +959,90 @@ main {
       <button onclick="setTTSEngine('webspeech')" class="tts-engine-btn" data-engine="webspeech">Браузер</button>
     </div>
     <div style="font-size:0.68rem;color:var(--text-dim);margin-top:8px">Если слышите английский — попробуйте Google TTS</div>
+
+    <!-- Install instructions -->
+    <div style="margin-top:12px;">
+      <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"
+        style="font-size:0.72rem;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:6px">
+        <span>📥 Как установить французский голос</span>
+        <span style="font-size:0.6rem">▼</span>
+      </div>
+      <div style="display:none;margin-top:8px;font-size:0.71rem;color:var(--text-muted);line-height:1.7;background:var(--surface2);border-radius:8px;padding:10px 12px;">
+        <div style="margin-bottom:6px;color:var(--text);font-size:0.72rem;font-weight:500">Без установленного французского голоса браузер говорит по-английски</div>
+        <div style="margin-bottom:4px">🤖 <b>Android:</b> Настройки → Язык и ввод → Синтез речи → Google TTS → Установить голосовые данные → Français</div>
+        <div style="margin-bottom:4px">🍎 <b>iOS:</b> Настройки → Универсальный доступ → Озвученный контент → Голоса → Français → скачать Enhanced</div>
+        <div style="margin-bottom:4px">🪟 <b>Windows:</b> Настройки → Время и язык → Речь → Управление голосами → Добавить французский</div>
+        <div>🍏 <b>macOS:</b> Системные настройки → Универсальный доступ → Озвученный контент → Управление голосами → французский</div>
+      </div>
+    </div>
   </div>
 </div>
 <div id="more-overlay" onclick="closeMoreMenu()" style="display:none;position:fixed;inset:0;z-index:250;background:rgba(0,0,0,0.5)"></div>
 
 <main>
+
+<!-- CHANGELOG -->
+<div id="screen-changelog" class="screen">
+  <div style="max-width:640px;margin:0 auto;">
+    <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin-bottom:4px">Обновления</h2>
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:28px">Что нового в приложении</div>
+
+    <div style="display:flex;flex-direction:column;gap:20px;">
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px 22px;">
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);margin-bottom:12px">Май 2025</div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">🎹 Виртуальная клавиатура AZERTY</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">Полная французская раскладка — андроидная клавиатура не появляется. Долгое нажатие на <b>a e i o u c</b> показывает акценты: à â é è ê ë... Переключение на родную клавиатуру кнопкой «⌨ Своя клавиатура».</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">🔤 Тренажёр существительных</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">183 слова по 12 темам (тело, еда, город, природа...). Кнопки <b>LE / LA</b>. Подсказка после ответа — правило рода по суффиксу. Режим «⚠️ Слабые».</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">🔗 Тренажёр предлогов</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">52 конструкции глагольного управления: <i>parler de, penser à, commencer à, arrêter de...</i> Выбор из 4 вариантов, пример с пропуском до ответа.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">📅 Spaced Repetition (SRS)</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">Алгоритм SM-2 как в Anki. Интервалы 1 → 6 → 15 → ... дней. Виджет на главной показывает сколько глаголов ждут повторения сегодня. Кнопка «✓ Уже знаю» — пометить знакомые глаголы.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">📝 500 фраз</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">5 фраз на каждый глагол с пропуском ___. Фильтры по глаголу, группе и времени.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">➕ 59 новых глаголов</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">База выросла до <b>190 глаголов</b>: apporter, envoyer, essayer, devenir, découvrir, traduire, arrêter, quitter и другие.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">📊 Статистика разделена</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">На главной и в статистике — глаголы и существительные считаются отдельно.</div>
+        </div>
+
+        <div>
+          <div style="font-size:1rem;font-weight:600;margin-bottom:10px">🔊 Установка французского голоса</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6;margin-bottom:10px">Без установленного французского голоса браузер говорит по-английски. Исправляется за 1 минуту:</div>
+          <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;font-size:0.8rem;line-height:1.9;color:var(--text-muted);">
+            <div>🤖 <b style="color:var(--text)">Android:</b> Настройки → Язык и ввод → Синтез речи → Google TTS → Установить голосовые данные → <b>Français</b></div>
+            <div>🍎 <b style="color:var(--text)">iOS:</b> Настройки → Универсальный доступ → Озвученный контент → Голоса → Français → скачать <b>Enhanced</b></div>
+            <div>🪟 <b style="color:var(--text)">Windows:</b> Настройки → Время и язык → Речь → Управление голосами → добавить <b>французский</b></div>
+            <div>🍏 <b style="color:var(--text)">macOS:</b> Системные настройки → Универсальный доступ → Озвученный контент → Управление голосами → <b>французский</b></div>
+          </div>
+          <div style="font-size:0.76rem;color:var(--text-dim);margin-top:8px">Также в меню ⋯ Ещё можно выбрать движок озвучки вручную и протестировать.</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- HOME -->
 <div id="screen-home" class="screen active">
@@ -966,11 +1051,21 @@ main {
     <p>Изучай грамматику, тренируй спряжения, отслеживай прогресс.</p>
   </div>
 
-  <div class="stats-row" id="home-stats-row">
-    <div class="stat-card"><div class="num" id="hs-verbs">0</div><div class="label">глаголов изучено</div></div>
-    <div class="stat-card"><div class="num" id="hs-total">0</div><div class="label">попыток всего</div></div>
+  <!-- Verbs stats -->
+  <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px">✏️ Глаголы</div>
+  <div class="stats-row" id="home-stats-row" style="margin-bottom:16px">
+    <div class="stat-card"><div class="num" id="hs-verbs">0</div><div class="label">изучено</div></div>
+    <div class="stat-card"><div class="num" id="hs-total">0</div><div class="label">попыток</div></div>
     <div class="stat-card"><div class="num" id="hs-pct">—</div><div class="label">точность</div></div>
     <div class="stat-card"><div class="num" id="hs-streak">0</div><div class="label">дней подряд</div></div>
+  </div>
+
+  <!-- Nouns stats -->
+  <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px">🔤 Существительные</div>
+  <div class="stats-row" style="margin-bottom:24px">
+    <div class="stat-card"><div class="num" id="hs-nouns">0</div><div class="label">изучено</div></div>
+    <div class="stat-card"><div class="num" id="hs-noun-total">0</div><div class="label">попыток</div></div>
+    <div class="stat-card"><div class="num" id="hs-noun-pct">—</div><div class="label">точность</div></div>
   </div>
 
   <!-- SRS widget -->
@@ -1466,6 +1561,7 @@ main {
 
   <div class="feedback-row" id="feedback-row">
     <button class="hint-btn" id="hint-btn" onclick="showHint()">💡 Подсказка (−1)</button>
+    <button class="hint-btn" onclick="markAsKnown()" style="color:var(--good);border-color:var(--good)">✓ Уже знаю</button>
   </div>
 
   <div style="text-align:right;margin-top:4px"><button class="kb-toggle-btn" id="kb-toggle-main" onclick="toggleKbMode('main')">⌨ Своя клавиатура</button></div>
@@ -1489,7 +1585,7 @@ main {
   <!-- NOUNS MODE -->
   <div id="trainer-nouns-mode" style="display:none;">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
-      <select class="select-control" id="noun-theme" onchange="nounNextCard()">
+      <select class="select-control" id="noun-theme" onchange="nounWeakMode=false;nounNextCard()">
         <option value="all">Все темы</option>
         <option value="corps">🫀 Тело</option>
         <option value="famille">👨‍👩‍👧 Семья</option>
@@ -1504,6 +1600,7 @@ main {
         <option value="animaux">🐾 Животные</option>
         <option value="divers">📦 Разное</option>
       </select>
+      <button id="noun-weak-btn" class="btn btn-secondary" onclick="toggleNounWeak()" style="font-size:0.78rem;padding:6px 12px;white-space:nowrap">⚠️ Слабые</button>
       <div id="noun-count" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto"></div>
     </div>
     <div class="score-display" style="margin-bottom:16px;">
@@ -9098,18 +9195,34 @@ function buildFrKb(kbId) {
     e.preventDefault();
     btn.setPointerCapture(e.pointerId);
     btn.classList.add('pressed');
-    frHandleKey(btn.dataset.kbid, btn.dataset.ch);
-    setTimeout(() => btn.classList.remove('pressed'), 150);
 
-    // Long press for accents
-    const ch = btn.dataset.ch;
-    const key = frKbShift ? ch.toUpperCase() : ch.toLowerCase();
-    if (ACCENTS[key]) {
-      const kbId = btn.dataset.kbid;
-      const t = setTimeout(() => showAccentPopup(kbId, ch, btn), 500);
-      const cancel = () => { clearTimeout(t); };
-      btn.addEventListener('pointerup',    cancel, {once:true});
-      btn.addEventListener('pointerleave', cancel, {once:true});
+    const ch    = btn.dataset.ch;
+    const kbId  = btn.dataset.kbid;
+    const key   = frKbShift ? ch.toUpperCase() : ch.toLowerCase();
+    const hasAccents = !!ACCENTS[key];
+
+    if (hasAccents) {
+      // For keys with accents: wait — if finger held → show popup, if released early → insert char
+      let longPressed = false;
+      const longTimer = setTimeout(() => {
+        longPressed = true;
+        btn.classList.remove('pressed');
+        showAccentPopup(kbId, ch, btn);
+      }, 400);
+
+      const onUp = () => {
+        clearTimeout(longTimer);
+        btn.classList.remove('pressed');
+        btn.removeEventListener('pointerup',    onUp);
+        btn.removeEventListener('pointerleave', onUp);
+        if (!longPressed) frHandleKey(kbId, ch); // short tap → insert
+      };
+      btn.addEventListener('pointerup',    onUp, {once:true});
+      btn.addEventListener('pointerleave', onUp, {once:true});
+    } else {
+      // Normal keys: insert immediately
+      frHandleKey(kbId, ch);
+      setTimeout(() => btn.classList.remove('pressed'), 150);
     }
   });
 }
@@ -9230,6 +9343,8 @@ function closeMoreMenu() {
   document.getElementById('more-overlay').style.display = 'none';
 }
 
+
+
 function setTTSEngine(engine) {
   localStorage.setItem('ttsEngine', engine);
   document.querySelectorAll('.tts-engine-btn').forEach(b => {
@@ -9307,10 +9422,153 @@ const GENDER_PATTERNS = [
   {suffix:'in',   gender:'m', rule:'Слова на <b>-in</b> обычно мужского рода', exceptions:['fin','main']},
   {suffix:'on',   gender:'m', rule:'Слова на <b>-on</b> обычно мужского рода', exceptions:['maison','saison','leçon','façon','prison','raison','chanson','boisson','oraison']},
   {suffix:'at',   gender:'m', rule:'Слова на <b>-at</b> мужского рода', exceptions:[]},
+  // More feminine
+  {suffix:'eille', gender:'f', rule:'Слова на <b>-eille</b> женского рода', exceptions:[]},
+  {suffix:'ouche', gender:'f', rule:'Слова на <b>-ouche</b> женского рода', exceptions:[]},
+  {suffix:'anche', gender:'f', rule:'Слова на <b>-anche</b> женского рода', exceptions:[]},
+  {suffix:'oire',  gender:'f', rule:'Слова на <b>-oire</b> часто женского рода', exceptions:['laboratoire','répertoire','territoire','observatoire','conservatoire','ivoire','pourboire']},
+  {suffix:'ise',   gender:'f', rule:'Слова на <b>-ise</b> женского рода', exceptions:[]},
+  {suffix:'ise',   gender:'f', rule:'Слова на <b>-ise</b> женского рода', exceptions:[]},
+  {suffix:'lle',   gender:'f', rule:'Слова на <b>-lle</b> часто женского рода (ville, famille, fille...)', exceptions:[]},
+  {suffix:'me',    gender:'f', rule:'Слова на <b>-me</b> часто женского рода', exceptions:['problème','système','programme','thème','diplôme','volume','rythme','homme','calme','charme','aume']},
+  {suffix:'ée',    gender:'f', rule:'Слова на <b>-ée</b> обычно женского рода', exceptions:['musée','lycée','trophée']},
+  {suffix:'ière',  gender:'f', rule:'Слова на <b>-ière</b> женского рода', exceptions:[]},
+  // More masculine
+  {suffix:'ail',   gender:'m', rule:'Слова на <b>-ail</b> мужского рода', exceptions:[]},
+  {suffix:'eil',   gender:'m', rule:'Слова на <b>-eil</b> мужского рода (soleil, conseil...)', exceptions:[]},
+  {suffix:'ème',   gender:'m', rule:'Слова на <b>-ème</b> обычно мужского рода', exceptions:[]},
+  {suffix:'ège',   gender:'m', rule:'Слова на <b>-ège</b> мужского рода', exceptions:[]},
+  {suffix:'an',    gender:'m', rule:'Слова на <b>-an</b> обычно мужского рода', exceptions:[]},
+  {suffix:'ent',   gender:'m', rule:'Слова на <b>-ent</b> обычно мужского рода', exceptions:[]},
+  {suffix:'ès',    gender:'m', rule:'Слова на <b>-ès</b> мужского рода', exceptions:[]},
+  {suffix:'os',    gender:'m', rule:'Слова на <b>-os</b> мужского рода', exceptions:[]},
+  {suffix:'us',    gender:'m', rule:'Слова на <b>-us</b> мужского рода', exceptions:[]},
+  {suffix:'eau',   gender:'m', rule:'Слова на <b>-eau</b> мужского рода', exceptions:['eau','peau']},
 ];
+
+const NOUN_HINTS = {
+  "ami":       "💡 Слова на -i мужского рода: le ami → l'ami",
+  "arbre":     "💡 Деревья почти всегда мужского рода: le chêne, le sapin...",
+  "automne":   "💡 Все 4 сезона мужского рода: le printemps, l'été, l'automne, l'hiver",
+  "autoroute": "💡 Женский — от la route (дорога, женский)",
+  "aéroport":  "💡 Слова на -port мужского рода",
+  "banque":    "💡 Слова на -anque женского рода",
+  "beurre":    "💡 Исключение из правила -ure! le beurre — мужской",
+  "bibliothèque": "💡 Слова на -thèque женского рода",
+  "bras":      "💡 Короткие слова на -as мужского рода",
+  "bus":       "💡 Заимствования на -us мужского рода",
+  "café":      "💡 Слова на ударное -é мужского рода",
+  "canapé":    "💡 Слова на ударное -é мужского рода",
+  "chambre":   "💡 Слова на -ambre женского рода",
+  "chemise":   "💡 Слова на -ise женского рода",
+  "cheval":    "💡 Слова на -al мужского рода: le cheval, le journal...",
+  "cheveu":    "💡 Слова на -eu мужского рода",
+  "chien":     "💡 Слова на -ien мужского рода",
+  "ciel":      "💡 Слова на -el мужского рода: le ciel, le sel, le gel...",
+  "cinéma":    "💡 Слова на -a мужского рода (кроме la)",
+  "collègue":  "💡 Общий род — le collègue (муж.) / la collègue (жен.)",
+  "cuisine":   "💡 Слова на -ine женского рода",
+  "cœur":      "💡 Органы тела на -eur мужского рода: le cœur, le moteur",
+  "dos":       "💡 Слова на -os мужского рода",
+  "emploi":    "💡 Слова на -oi мужского рода: le roi, le mois, l'emploi",
+  "enfant":    "💡 Общий род — l'enfant (le/la зависит от пола)",
+  "fenêtre":   "💡 Слова на -être/-ître женского рода",
+  "film":      "💡 Заимствования из английского → мужской",
+  "fils":      "💡 le fils (сын) — не путай с les filles!",
+  "forêt":     "💡 Исключение из правила -et! la forêt — женский",
+  "fruit":     "💡 Слова на -uit мужского рода",
+  "frère":     "💡 Мужской — обозначает мужчину",
+  "fête":      "💡 Слова на -ête женского рода",
+  "gare":      "💡 Слова на -are женского рода",
+  "grand-mère":"💡 Женский — обозначает женщину",
+  "grand-père":"💡 Мужской — обозначает мужчину",
+  "herbe":     "💡 Слова на -erbe женского рода",
+  "hiver":     "💡 Все 4 сезона мужского рода: le printemps, l'été, l'automne, l'hiver",
+  "hôpital":   "💡 Слова на -al мужского рода: l'hôpital, le journal...",
+  "hôtel":     "💡 Слова на -el мужского рода: le sel, le gel, l'hôtel",
+  "jambe":     "💡 Части тела на -ambe женского рода",
+  "jour":      "💡 le jour (день) — мужской; но la journée = продолжительность дня",
+  "journal":   "💡 Слова на -al мужского рода: le journal → les journaux",
+  "lait":      "💡 Слова на -ait мужского рода: le lait, le fait, le portrait",
+  "langue":    "💡 la langue — язык тела и язык (речь) — оба женские",
+  "lettre":    "💡 Слова на -etre женского рода",
+  "lit":       "💡 Слова на -it мужского рода",
+  "livre":     "💡 le livre (книга) — мужской; la livre (фунт) — женский",
+  "lune":      "💡 la lune — как la terre, la mer — небесные тела часто женские",
+  "marché":    "💡 Слова на ударное -é мужского рода",
+  "mari":      "💡 Слова на -i мужского рода: le mari, le taxi, le jury",
+  "match":     "💡 Заимствования из английского → мужской",
+  "mer":       "💡 la mer — море, женский (как la terre, la lune)",
+  "minute":    "💡 Единицы времени на -ute женского рода",
+  "mois":      "💡 Слова на -ois мужского рода",
+  "montagne":  "💡 Слова на -agne женского рода: la montagne, la campagne",
+  "mot":       "💡 Слова на -ot мужского рода: le mot, le pot, le lot",
+  "mur":       "💡 Короткие слова на -ur мужского рода",
+  "musique":   "💡 Слова на -ique женского рода: la musique, la pratique",
+  "mère":      "💡 Женский — обозначает женщину",
+  "métro":     "💡 Слова на -o мужского рода: le métro, le vélo, le piano",
+  "neige":     "💡 Слова на -eige женского рода",
+  "nez":       "💡 Слова на -ez мужского рода",
+  "nuit":      "💡 la nuit — ночь, женский (как la brume, la lune)",
+  "oncle":     "💡 Мужской — обозначает мужчину",
+  "parc":      "💡 Короткие слова на -arc мужского рода",
+  "photo":     "💡 Сокращение от la photographie — женский",
+  "phrase":    "💡 Слова на -ase женского рода: la phrase, la base",
+  "pied":      "💡 le pied — стопа, мужской",
+  "pierre":    "💡 la pierre — камень, женский",
+  "place":     "💡 Слова на -ace женского рода: la place, la face, la race",
+  "pont":      "💡 Слова на -ont мужского рода",
+  "porte":     "💡 Слова на -orte женского рода",
+  "poule":     "💡 Обозначает самку → женский род",
+  "printemps": "💡 Все 4 сезона мужского рода: le printemps, l'été, l'automne, l'hiver",
+  "prix":      "💡 Слова на -ix мужского рода: le prix, la voix (исключение!)",
+  "père":      "💡 Мужской — обозначает мужчину",
+  "restaurant":"💡 Слова на -ant мужского рода: le restaurant, le croissant",
+  "robe":      "💡 Слова на -obe женского рода",
+  "route":     "💡 Слова на -oute женского рода: la route, la croûte",
+  "rue":       "💡 Короткие слова на -ue женского рода: la rue, la vue, la queue",
+  "réponse":   "💡 Слова на -onse женского рода",
+  "sac":       "💡 Слова на -ac мужского рода",
+  "salaire":   "💡 Слова на -aire мужского рода: le salaire, le commissaire",
+  "sel":       "💡 Слова на -el мужского рода: le sel, le ciel, le gel",
+  "semaine":   "💡 Слова на -aine женского рода: la semaine, la dizaine",
+  "sol":       "💡 Короткие слова на -ol мужского рода",
+  "soupe":     "💡 la soupe — женский, как la coupe, la loupe",
+  "sport":     "💡 Заимствования из английского → мужской",
+  "sucre":     "💡 le sucre — мужской",
+  "sœur":      "💡 Женский — обозначает женщину",
+  "table":     "💡 Предметы мебели на -able женского рода",
+  "tante":     "💡 Слова на -ante женского рода; обозначает женщину",
+  "taxi":      "💡 Слова на -i мужского рода: le taxi, le mari, le jury",
+  "thé":       "💡 Слова на ударное -é мужского рода",
+  "téléphone": "💡 Слова на -one мужского рода: le téléphone, le cyclone",
+  "tête":      "💡 Слова на -ête женского рода: la tête, la fête, la bête",
+  "vacances":  "💡 Les vacances — всегда мн. число, женский род",
+  "vache":     "💡 Обозначает самку → женский род",
+  "ventre":    "💡 Слова на -entre мужского рода",
+  "veste":     "💡 la veste — пиджак, женский (одежда на -este женская)",
+  "viande":    "💡 Слова на -ande женского рода: la viande, la commande",
+  "vélo":      "💡 Слова на -o мужского рода: le vélo, le métro, le piano",
+  "école":     "💡 Слова на -ole женского рода: l'école, la parole, la colle",
+  "église":    "💡 Слова на -ise женского рода: l'église, la chemise",
+  "étoile":    "💡 Слова на -oile женского рода: l'étoile, la toile, la voile",
+  "œil":       "💡 l'œil — мужской, мн. число: les yeux (исключение!)",
+  "œuf":       "💡 l'œuf — яйцо, мужской",
+  "main":      "💡 Исключение из правила -in! la main — женский",
+  "homme":     "💡 Исключение из правила -me! l'homme — мужской",
+  "femme":     "💡 la femme — женщина/жена, женский род",
+  "dent":      "💡 Исключение из правила -ent! la dent — женский",
+  "bouche":    "💡 Слова на -ouche женского рода: la bouche, la douche",
+  "oreille":   "💡 Слова на -eille женского рода: l'oreille, la bouteille",
+  "eau":       "💡 Исключение из правила -eau! l'eau — женский",
+  "peau":      "💡 Исключение из правила -eau! la peau — женский",
+};
 
 function getGenderHint(word, correctGender) {
   const w = word.toLowerCase().replace(/['']/g,"'");
+  // Check individual hints first (most specific)
+  if (NOUN_HINTS[w]) return NOUN_HINTS[w];
+  // Then suffix patterns
   for (const p of GENDER_PATTERNS) {
     if (!w.endsWith(p.suffix)) continue;
     const isException = p.exceptions.some(ex => w === ex.toLowerCase());
@@ -9372,15 +9630,45 @@ function setTrainerMode(mode) {
   }
 }
 
+let nounWeakMode = false;
+
+function toggleNounWeak() {
+  nounWeakMode = !nounWeakMode;
+  const btn = document.getElementById('noun-weak-btn');
+  if (btn) {
+    btn.style.background = nounWeakMode ? 'var(--bad)' : '';
+    btn.style.color = nounWeakMode ? '#fff' : '';
+    btn.style.borderColor = nounWeakMode ? 'var(--bad)' : '';
+  }
+  nGood2 = 0; nBad2 = 0; nStreak2 = 0;
+  document.getElementById('nscore2-good').textContent = '0';
+  document.getElementById('nscore2-bad').textContent = '0';
+  document.getElementById('nscore2-streak').textContent = '0';
+  nounNextCard();
+}
+
 function getNounPool() {
   const theme = document.getElementById('noun-theme')?.value || 'all';
-  return theme === 'all' ? NOUNS : NOUNS.filter(n => n.theme === theme);
+  let pool = theme === 'all' ? NOUNS : NOUNS.filter(n => n.theme === theme);
+
+  if (nounWeakMode) {
+    const stats = loadStats();
+    const weak = pool.filter(n => {
+      const s = stats['noun_' + n.id];
+      if (!s || s.total < 2) return false;
+      return (s.correct / s.total) < 0.6;
+    });
+    return weak.length > 0 ? weak : pool; // fallback if no weak yet
+  }
+  return pool;
 }
 
 function nounNextCard() {
   const pool = getNounPool();
   const cnt = document.getElementById('noun-count');
-  if (cnt) cnt.textContent = pool.length + ' слов';
+  if (cnt) cnt.textContent = nounWeakMode
+    ? `⚠️ ${pool.length} слабых`
+    : pool.length + ' слов';
   if (!pool.length) return;
 
   // Weighted pick — wrong answers appear more often
@@ -9576,14 +9864,13 @@ function saveProfiles(list) {
 
 function loginProfile(name) {
   currentProfile = name;
-  // ensure in list
   const list = getProfiles();
   if (!list.includes(name)) { list.push(name); saveProfiles(list); }
-  // update nav with profile indicator
   const brand = document.querySelector('.nav-brand');
   if (brand) brand.innerHTML = 'conjugaison <span style="font-size:0.65rem;opacity:0.6;font-style:normal;margin-left:6px">' + name + '</span>';
   document.getElementById('screen-profile').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
+
   renderHome();
   resetTrainer();
 }
@@ -9636,6 +9923,85 @@ function createProfile() {
   loginProfile(name);
 }
 
+function showProfileManage() {
+  // Create modal if not exists
+  let modal = document.getElementById('profile-manage-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'profile-manage-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;max-width:440px;width:90%;max-height:80vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div style="font-family:'Playfair Display',serif;font-size:1.3rem">👤 Профили</div>
+          <button onclick="document.getElementById('profile-manage-modal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer">×</button>
+        </div>
+        <div id="profile-manage-list"></div>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;">
+          <input id="profile-manage-input" type="text" placeholder="Новый профиль..." class="answer-input" style="flex:1;padding:8px 12px;font-size:0.9rem">
+          <button class="btn btn-primary" onclick="createProfileFromManage()">Создать</button>
+        </div>
+      </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+  }
+  refreshProfileManageList();
+}
+
+function refreshProfileManageList() {
+  const el = document.getElementById('profile-manage-list');
+  if (!el) return;
+  const list = getProfiles();
+  if (!list.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0">Профилей пока нет</div>';
+    return;
+  }
+  el.innerHTML = list.map(name => {
+    const stats = (() => { try { return JSON.parse(localStorage.getItem('conj_'+name+'_stats')||'{}'); } catch { return {}; } })();
+    let total=0, correct=0;
+    Object.values(stats).forEach(v=>{total+=v.total||0;correct+=v.correct||0;});
+    const pct = total>0 ? Math.round(correct/total*100)+'%' : '—';
+    const isCurrent = name === currentProfile;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface2);border:1px solid ${isCurrent?'var(--accent)':'var(--border)'};border-radius:10px;margin-bottom:8px;">
+      <div>
+        <div style="font-weight:500;font-size:0.95rem">${name}${isCurrent?' <span style="font-size:0.7rem;color:var(--accent)">(текущий)</span>':''}</div>
+        <div style="font-size:0.72rem;color:var(--text-muted)">${total} попыток · ${pct} точность</div>
+      </div>
+      <button class="del-profile-btn" data-name="${name.replace(/"/g,'&quot;')}" style="background:none;border:1px solid #e05555;border-radius:6px;padding:5px 10px;color:#e05555;cursor:pointer;font-size:0.78rem">🗑 Удалить</button>
+    </div>`;
+  }).join('');
+
+  // Attach events after render
+  el.querySelectorAll('.del-profile-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteProfileFromManage(btn.dataset.name));
+  });
+}
+
+function deleteProfileFromManage(name) {
+  if (!confirm('Удалить профиль «'+name+'»? Вся статистика будет потеряна.')) return;
+  const list = getProfiles().filter(n => n !== name);
+  saveProfiles(list);
+  try { localStorage.removeItem('conj_'+name+'_stats'); localStorage.removeItem('conj_'+name+'_meta'); localStorage.removeItem('conj_'+name+'_srs'); } catch(e) {}
+  if (name === currentProfile) {
+    document.getElementById('profile-manage-modal')?.remove();
+    logoutProfile();
+  } else {
+    refreshProfileManageList();
+  }
+}
+
+function createProfileFromManage() {
+  const input = document.getElementById('profile-manage-input');
+  const name = input?.value.trim();
+  if (!name) return;
+  if (name.length > 24) { alert('Имя слишком длинное'); return; }
+  const list = getProfiles();
+  if (list.includes(name)) { alert('Профиль уже существует'); return; }
+  input.value = '';
+  loginProfile(name);
+  document.getElementById('profile-manage-modal')?.remove();
+}
+
 function deleteProfile(name) {
   if (!confirm('Удалить профиль «' + name + '»? Вся статистика будет потеряна.')) return;
   const list = getProfiles().filter(n => n !== name);
@@ -9673,7 +10039,7 @@ function showScreen(id) {
   const target = document.getElementById('screen-' + id);
   if (target) { target.classList.add('active'); target.style.display = ''; }
   document.querySelectorAll('.nav-tab').forEach(t => {
-    if (t.textContent.includes({home:'Главная',grammar:'Грамматика',trainer:'Тренажёр',study:'Изучить',stats:'Статистика',dict:'Словарь',groups:'Группы',numbers:'Числа',phrases:'Фразы'}[id] || '')) {
+    if (t.textContent.includes({home:'Главная',grammar:'Грамматика',trainer:'Тренажёр',study:'Изучить',stats:'Статистика',dict:'Словарь',groups:'Группы',numbers:'Числа',phrases:'Фразы',changelog:'Обновления'}[id] || '')) {
       t.classList.add('active');
     }
   });
@@ -9719,20 +10085,34 @@ function setGrammar(key) {
 function renderHome() {
   const stats = loadStats();
   const meta = loadMeta();
-  let total = 0, correct = 0, verbsSeen = new Set();
+  const srs = loadSRS();
+
+  // Verb stats (exclude noun_, tense_, prep_, ph_ keys)
+  let vTotal = 0, vCorrect = 0, vSeen = new Set();
+  let nTotal = 0, nCorrect = 0, nSeen = new Set();
+
   Object.entries(stats).forEach(([k, v]) => {
-    total += v.total || 0;
-    correct += v.correct || 0;
-    verbsSeen.add(k.split('_')[0]);
+    if (k.startsWith('noun_')) {
+      nTotal += v.total || 0; nCorrect += v.correct || 0; nSeen.add(k.replace('noun_',''));
+    } else if (!k.startsWith('tense_') && !k.startsWith('prep_') && !k.startsWith('ph_')) {
+      vTotal += v.total || 0; vCorrect += v.correct || 0; vSeen.add(k);
+    }
   });
-  document.getElementById('hs-verbs').textContent = verbsSeen.size;
-  document.getElementById('hs-total').textContent = total;
-  document.getElementById('hs-pct').textContent = total > 0 ? Math.round(correct/total*100) + '%' : '—';
+
+  document.getElementById('hs-verbs').textContent = vSeen.size;
+  document.getElementById('hs-total').textContent = vTotal;
+  document.getElementById('hs-pct').textContent = vTotal > 0 ? Math.round(vCorrect/vTotal*100) + '%' : '—';
   document.getElementById('hs-streak').textContent = meta.streak || 0;
+  document.getElementById('hs-nouns').textContent = nSeen.size;
+  document.getElementById('hs-noun-total').textContent = nTotal;
+  document.getElementById('hs-noun-pct').textContent = nTotal > 0 ? Math.round(nCorrect/nTotal*100) + '%' : '—';
 
   // SRS widget
-  const due = getSRSDueCount();
-  const newCount = getSRSNewCount();
+  const today = todayStr();
+  const due = VERBS.filter(v => { const c = srs[v.id]; return c && c.dueDate <= today; }).length;
+  const newCount = VERBS.filter(v => !srs[v.id] && !stats[v.id]).length;
+  const knownCount = VERBS.filter(v => srs[v.id]).length;
+
   const srsWidget = document.getElementById('srs-widget');
   if (srsWidget) {
     if (due > 0) {
@@ -9742,11 +10122,9 @@ function renderHome() {
           <div>
             <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:4px">📅 Повторение сегодня</div>
             <div style="font-size:1.8rem;font-weight:600;color:var(--text)">${due}</div>
-            <div style="font-size:0.78rem;color:var(--text-muted)">глагол${due===1?'':'ов'} ждут повторения</div>
+            <div style="font-size:0.78rem;color:var(--text-muted)">глагол${due===1?'':due<5?'а':'ов'} ждут повторения</div>
           </div>
-          <button class="btn btn-primary" onclick="startSRSReview()" style="white-space:nowrap">
-            Повторить →
-          </button>
+          <button class="btn btn-primary" onclick="startSRSReview()" style="white-space:nowrap">Повторить →</button>
         </div>`;
     } else {
       srsWidget.style.display = 'block';
@@ -9755,7 +10133,7 @@ function renderHome() {
           <div style="font-size:1.6rem">✅</div>
           <div>
             <div style="font-size:0.85rem;color:var(--text)">На сегодня всё повторено!</div>
-            <div style="font-size:0.75rem;color:var(--text-muted)">${newCount > 0 ? newCount + ' новых глаголов не изучено' : 'Все глаголы в расписании'}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted)">${newCount > 0 ? newCount + ' глаголов ещё не встречались' : knownCount + ' глаголов в расписании'}</div>
           </div>
         </div>`;
     }
@@ -9790,6 +10168,29 @@ function startSRSReview() {
   showScreen('trainer');
   setTrainerMode('verbs');
   resetTrainer();
+}
+
+function markAsKnown() {
+  if (!currentVerb) return;
+  const srs = loadSRS();
+  // Mark as known — set interval to 7 days, high ease factor
+  srs[currentVerb.id] = {
+    interval: 7,
+    easeFactor: 2.5,
+    repetitions: 2,
+    dueDate: addDays(todayStr(), 7),
+    lastReview: todayStr(),
+    markedKnown: true
+  };
+  saveSRS(srs);
+  // Also record in stats
+  const stats = loadStats();
+  if (!stats[currentVerb.id]) stats[currentVerb.id] = {total:1, correct:1};
+  saveStats(stats);
+  // Visual feedback
+  const fb = document.getElementById('feedback-row');
+  if (fb) fb.innerHTML = `<div style="color:var(--good);font-size:0.82rem">✓ ${currentVerb.inf} — помечен как знакомый</div>`;
+  setTimeout(resetTrainer, 800);
 }
 
 function exitReviewMode() {
@@ -10074,7 +10475,9 @@ function renderCard() {
 }
 
 function clearFeedback() {
-  document.getElementById('feedback-row').innerHTML = '<button class="hint-btn" id="hint-btn" onclick="showHint()">💡 Подсказка (−1)</button>';
+  document.getElementById('feedback-row').innerHTML = `
+    <button class="hint-btn" id="hint-btn" onclick="showHint()">💡 Подсказка (−1)</button>
+    <button class="hint-btn" onclick="markAsKnown()" style="color:var(--good);border-color:var(--good)">✓ Уже знаю</button>`;
 }
 
 function handleKey(e) {
@@ -10285,9 +10688,14 @@ function showHint() {
 function renderStats() {
   const stats = loadStats();
   const meta = loadMeta();
-  const verbKeys = Object.keys(stats).filter(k => !k.startsWith('tense_'));
+  const srs = loadSRS();
 
-  if (verbKeys.length === 0) {
+  // Separate verb keys from noun/prep/phrase keys
+  const verbKeys = Object.keys(stats).filter(k =>
+    !k.startsWith('tense_') && !k.startsWith('noun_') && !k.startsWith('prep_') && !k.startsWith('ph_')
+  );
+
+  if (verbKeys.length === 0 && Object.keys(stats).filter(k => k.startsWith('noun_')).length === 0) {
     document.getElementById('stats-empty').style.display = 'block';
     document.getElementById('stats-content').style.display = 'none';
     return;
@@ -10300,7 +10708,7 @@ function renderStats() {
   document.getElementById('stat-streak-best').textContent = 'Рекорд: ' + (meta.bestStreak || 0);
   let totalAll = 0;
   verbKeys.forEach(k => { totalAll += stats[k].total || 0; });
-  document.getElementById('stat-total-label').textContent = 'Всего попыток: ' + totalAll;
+  document.getElementById('stat-total-label').textContent = 'Всего попыток (глаголы): ' + totalAll;
 
   // tense stats
   const tenseEl = document.getElementById('tense-stats');
@@ -10318,24 +10726,64 @@ function renderStats() {
       </div>`;
   });
 
-  // build verb array with stats
+  // verb array
   const verbData = verbKeys.map(k => {
     const s = stats[k];
     const verb = VERBS.find(v => v.id === k);
-    return { id: k, inf: verb ? verb.inf : k, meaning: verb ? verb.meaning : '', total: s.total, correct: s.correct, pct: Math.round(s.correct / s.total * 100) };
+    const card = srs[k];
+    return {
+      id: k,
+      inf: verb ? verb.inf : k,
+      meaning: verb ? verb.meaning : '',
+      total: s.total, correct: s.correct,
+      pct: Math.round(s.correct / s.total * 100),
+      interval: card ? card.interval : 0,
+      known: card?.markedKnown
+    };
   }).sort((a,b) => a.pct - b.pct);
 
   // weak verbs
   const weakEl = document.getElementById('weak-verbs-list');
   const weak = verbData.filter(v => v.pct < 60 && v.total >= 2);
-  if (weak.length === 0) {
-    weakEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:12px 0">Пока нет слабых глаголов — отлично!</div>';
-  } else {
-    weakEl.innerHTML = weak.map(v => verbStatRow(v)).join('');
-  }
+  weakEl.innerHTML = weak.length === 0
+    ? '<div style="color:var(--text-muted);font-size:0.85rem;padding:12px 0">Пока нет слабых глаголов — отлично!</div>'
+    : weak.map(v => verbStatRow(v)).join('');
 
   // all verbs
   document.getElementById('all-verb-stats').innerHTML = verbData.map(v => verbStatRow(v)).join('');
+
+  // ── Nouns stats ──
+  const nounKeys = Object.keys(stats).filter(k => k.startsWith('noun_'));
+  let nounStatsEl = document.getElementById('noun-stats-section');
+  if (!nounStatsEl) {
+    // Create noun stats section if not exists
+    const allVerbs = document.getElementById('all-verb-stats');
+    const section = document.createElement('div');
+    section.id = 'noun-stats-section';
+    section.style.marginTop = '32px';
+    allVerbs.parentElement.appendChild(section);
+    nounStatsEl = section;
+  }
+  if (nounKeys.length > 0) {
+    const nounData = nounKeys.map(k => {
+      const s = stats[k];
+      const id = k.replace('noun_','');
+      const noun = NOUNS.find(n => n.id === id);
+      return {
+        id, inf: noun ? noun.fr : id, meaning: noun ? noun.ru : '',
+        total: s.total, correct: s.correct,
+        pct: Math.round(s.correct / s.total * 100)
+      };
+    }).sort((a,b) => a.pct - b.pct);
+    const weak = nounData.filter(n => n.pct < 60 && n.total >= 2);
+    nounStatsEl.innerHTML = `
+      <div class="section-title" style="margin-bottom:12px">🔤 Существительные</div>
+      ${weak.length > 0 ? `<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--bad);margin-bottom:8px">Слабые</div>` + weak.map(n => verbStatRow(n)).join('') : ''}
+      <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin:12px 0 8px">Все (${nounData.length})</div>
+      ${nounData.map(n => verbStatRow(n)).join('')}`;
+  } else {
+    nounStatsEl.innerHTML = '';
+  }
 }
 
 function verbStatRow(v) {
@@ -10526,7 +10974,8 @@ function selectDictVerb(id) {
         <br><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="startTrainerVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">▶ Тренировать</button>
           <button class="btn btn-secondary" onclick="studyOneVerb('${verb.id}');showScreen('study')" style="padding:7px 14px;font-size:0.75rem">🎧 Изучить</button>
-          ${verb.custom ? `<button class="btn btn-danger" onclick="deleteCustomVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">🗑 Удалить</button>` : ''}
+          ${verb.custom ? `<button class="btn btn-secondary" onclick="editCustomVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">✏️ Редактировать</button>
+          <button class="btn btn-danger" onclick="deleteCustomVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">🗑 Удалить</button>` : ''}
         </div>
       </div>
     </div>
@@ -10714,6 +11163,23 @@ function saveNewVerb() {
 
   const imparfait = Array.from({length:6}, (_,i) => document.getElementById(`av-i-${i}`).value.trim());
   const futur     = Array.from({length:6}, (_,i) => document.getElementById(`av-f-${i}`).value.trim());
+
+  // Validate: if partially filled — warn
+  const impFilled = imparfait.filter(f => f).length;
+  if (impFilled > 0 && impFilled < 6) {
+    errEl.textContent = 'Imparfait: заполни все 6 форм или оставь все пустыми';
+    errEl.style.display = 'block';
+    setAvTab('imparfait');
+    return;
+  }
+  const futFilled = futur.filter(f => f).length;
+  if (futFilled > 0 && futFilled < 6) {
+    errEl.textContent = 'Futur: заполни все 6 форм или оставь все пустыми';
+    errEl.style.display = 'block';
+    setAvTab('futur');
+    return;
+  }
+
   const conj = { present };
   if (imparfait.every(f => f)) conj.imparfait = imparfait;
   if (futur.every(f => f))     conj.futur = futur;
@@ -11603,6 +12069,38 @@ function gShowHint() {
   document.getElementById('gscore-streak').textContent = gStreak;
 }
 // ════════════════════════════════════════════════
+function editCustomVerb(id) {
+  const verb = VERBS.find(v => v.id === id);
+  if (!verb || !verb.custom) return;
+  // Open add verb form pre-filled
+  openAddVerb();
+  setTimeout(() => {
+    document.getElementById('av-inf').value = verb.inf;
+    document.getElementById('av-meaning').value = verb.meaning;
+    document.getElementById('av-group').value = verb.group;
+    document.getElementById('av-pp').value = verb.pp;
+    document.getElementById('av-aux').value = verb.aux || 'avoir';
+    verb.conj.present?.forEach((f,i) => { const el = document.getElementById(`av-p-${i}`); if(el) el.value = f; });
+    verb.conj.imparfait?.forEach((f,i) => { const el = document.getElementById(`av-i-${i}`); if(el) el.value = f; });
+    verb.conj.futur?.forEach((f,i) => { const el = document.getElementById(`av-f-${i}`); if(el) el.value = f; });
+    if (verb.ex) {
+      ['present','passe','imparfait','futur'].forEach(t => {
+        const el = document.getElementById(`av-ex-${t}`);
+        if (el && verb.ex[t]) el.value = verb.ex[t];
+      });
+    }
+    // Remove old verb on save
+    const saveBtn = document.querySelector('#add-verb-modal .btn-primary');
+    if (saveBtn) {
+      const orig = saveBtn.onclick;
+      saveBtn.onclick = () => {
+        deleteCustomVerb(id);
+        saveNewVerb();
+      };
+    }
+  }, 100);
+}
+
 function deleteCustomVerb(id) {
   if (!confirm('Удалить этот глагол?')) return;
   const idx = VERBS.findIndex(v => v.id === id);
