@@ -9013,7 +9013,7 @@ function checkPrep(chosen) {
 // ════════════════════════════════════════════════
 let currentProfile = null; // set on login
 
-function profileKey(suffix) { return 'conj_' + currentProfile + '_' + suffix; }
+function profileKey(suffix) { return 'conj_' + (currentProfile||'').toLowerCase() + '_' + suffix; }
 
 function loadStats() {
   if (!currentProfile) return {};
@@ -9042,7 +9042,7 @@ function saveProfiles(list) {
 }
 
 function loginProfile(name) {
-  currentProfile = name;
+  currentProfile = name.toLowerCase();
   const list = getProfiles();
   if (!list.includes(name)) { list.push(name); saveProfiles(list); }
   const brand = document.querySelector('.nav-brand');
