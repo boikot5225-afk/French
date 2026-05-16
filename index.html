@@ -9316,7 +9316,7 @@ function showScreen(id) {
     dictSelected = null;
   }
   if (id === 'home') renderHome();
-  if (id === 'stats') renderStats();
+  if (id === 'stats') setTimeout(() => renderStats(), 50);
   if (id === 'dict') renderDict();
   if (id === 'groups') { renderGroupsHome(); backToGroups(); }
   if (id === 'numbers') renderNumbersScreen();
@@ -9953,11 +9953,11 @@ async function renderStats() {
   // Wait for verbs to load if needed
   if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
 
+  // Read fresh data AFTER await
   const stats = loadStats();
   const meta = loadMeta();
   const srs = loadSRS();
 
-  // Separate verb keys from noun/prep/phrase keys
   const verbKeys = Object.keys(stats).filter(k =>
     !k.startsWith('tense_') && !k.startsWith('noun_') && !k.startsWith('prep_') && !k.startsWith('ph_')
   );
