@@ -9906,12 +9906,13 @@ function getSRSDueVerbs(pool) {
 }
 
 function recordResult(correct) {
-  if (!currentVerb) return;
+  if (!currentVerb) { console.log('recordResult: no currentVerb'); return; }
   const stats = loadStats();
   const key = currentVerb.id;
   if (!stats[key]) stats[key] = { total: 0, correct: 0 };
   stats[key].total++;
   if (correct) stats[key].correct++;
+  console.log('recordResult:', key, JSON.stringify(stats[key]), 'correct:', correct);
 
   // tense stats
   const tkey = 'tense_' + currentTense;
