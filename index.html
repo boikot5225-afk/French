@@ -9021,8 +9021,10 @@ function loadStats() {
 }
 function saveStats(s) {
   if (!currentProfile) return;
+  // Always save to localStorage as cache
   try { localStorage.setItem(profileKey('stats'), JSON.stringify(s)); } catch(e) {}
-  if (sbUser) sbSaveStats(s).catch(()=>{});
+  // Save to Supabase if logged in
+  if (sbUser) sbSaveStats(s).catch(e => console.error('sbSaveStats error:', e));
 }
 function loadMeta() {
   if (!currentProfile) return {};
@@ -9316,7 +9318,7 @@ function showScreen(id) {
     dictSelected = null;
   }
   if (id === 'home') renderHome();
-  if (id === 'stats') setTimeout(() => renderStats(), 50);
+  if (id === 'stats') renderStats();
   if (id === 'dict') renderDict();
   if (id === 'groups') { renderGroupsHome(); backToGroups(); }
   if (id === 'numbers') renderNumbersScreen();
@@ -9950,11 +9952,14 @@ function showHint() {
 // STATS
 // ════════════════════════════════════════════════
 async function renderStats() {
-  // Wait for verbs to load if needed
-  if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
-
-  // Read fresh data AFTER await
-  const stats = loadStats();
+  // Read directly from Supabase if logged in, else localStorage
+  let stats = {};
+  if (sbUser) {
+    const cloudStats = await sbLoadStats();
+    if (cloudStats) stats = cloudStats;
+  } else {
+    stats = loadStats();
+  }
   const meta = loadMeta();
   const srs = loadSRS();
 
