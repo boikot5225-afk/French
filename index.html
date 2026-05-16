@@ -9943,7 +9943,10 @@ function showHint() {
 // ════════════════════════════════════════════════
 // STATS
 // ════════════════════════════════════════════════
-function renderStats() {
+async function renderStats() {
+  // Wait for verbs to load if needed
+  if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
+
   const stats = loadStats();
   const meta = loadMeta();
   const srs = loadSRS();
