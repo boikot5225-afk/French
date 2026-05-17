@@ -10922,15 +10922,8 @@ async function finishLearn(knew) {
     lastReview: todayStr()
   };
   localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
-  if (sbUser) {
-    await sb.from('srs').upsert({
-      user_id: sbUser.id, verb_id: learnVerb.id,
-      interval: 1, ease_factor: 2.5,
-      repetitions: knew ? 1 : 0,
-      due_date: addDays(todayStr(), 1),
-      last_review: todayStr()
-    }, { onConflict: 'user_id,verb_id' }).catch(()=>{});
-  }
+
+  // Show result immediately - don't wait for Supabase
   document.getElementById('result-emoji').textContent = knew ? '✅' : '📌';
   document.getElementById('result-title').textContent = knew ? 'Отлично!' : 'Запомним!';
 
@@ -10940,7 +10933,6 @@ async function finishLearn(knew) {
     ? `${learnVerb.inf} добавлен. Осталось в очереди: ${studyQueue.length - studyQueueIdx}`
     : `${learnVerb.inf} добавлен в расписание. Повторить завтра.`;
 
-  // Update next button
   const nextBtn = document.querySelector('#study-result-view .btn-primary');
   if (nextBtn) {
     if (hasNext) {
@@ -10952,6 +10944,17 @@ async function finishLearn(knew) {
     }
   }
   showLearnView('study-result-view');
+
+  // Save to Supabase in background
+  if (sbUser) {
+    sb.from('srs').upsert({
+      user_id: sbUser.id, verb_id: learnVerb.id,
+      interval: 1, ease_factor: 2.5,
+      repetitions: knew ? 1 : 0,
+      due_date: addDays(todayStr(), 1),
+      last_review: todayStr()
+    }, { onConflict: 'user_id,verb_id' }).catch(()=>{});
+  }
 }
 
 function backToLearnCard() { showLearnView('study-card-view'); }
