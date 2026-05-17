@@ -2038,12 +2038,16 @@ input:-webkit-autofill:focus {
 
   <!-- Step 1: Choose verb to learn -->
   <div id="study-pick" style="">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
       <div>
         <h2 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:4px">🎧 Изучить</h2>
         <div style="font-size:0.78rem;color:var(--text-muted)">Познакомься с новым глаголом, потом закрепи в тренажёре</div>
       </div>
-      <select class="select-control" id="study-group-filter" onchange="renderStudyScreen()">
+    </div>
+
+    <!-- Filters -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="select-control" id="study-group-filter" onchange="renderStudyScreen()" style="flex:1;min-width:120px;">
         <option value="all">Все группы</option>
         <option value="er">-ER</option>
         <option value="ir">-IR</option>
@@ -2051,23 +2055,36 @@ input:-webkit-autofill:focus {
         <option value="irr">Неправильные</option>
         <option value="ref">Возвратные</option>
       </select>
+      <input type="text" id="study-search" placeholder="🔍 Поиск..." oninput="renderStudyScreen()"
+        style="flex:2;min-width:140px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;outline:none"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
     </div>
 
     <!-- Stats row -->
-    <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:120px;text-align:center;">
-        <div style="font-size:1.6rem;font-weight:600;color:var(--accent)" id="study-new-count">—</div>
-        <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">новых</div>
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;flex:1;min-width:100px;text-align:center;">
+        <div style="font-size:1.4rem;font-weight:600;color:var(--accent)" id="study-new-count">—</div>
+        <div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">новых</div>
       </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:120px;text-align:center;">
-        <div style="font-size:1.6rem;font-weight:600;color:var(--good)" id="study-known-count">—</div>
-        <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">изучено</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;flex:1;min-width:100px;text-align:center;">
+        <div style="font-size:1.4rem;font-weight:600;color:var(--good)" id="study-known-count">—</div>
+        <div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">изучено</div>
       </div>
     </div>
 
-    <button class="btn btn-primary" onclick="startLearnSession()" style="width:100%;padding:14px;font-size:1rem;margin-bottom:24px">
-      ▶ Изучить следующий глагол
-    </button>
+    <!-- Selected list bar -->
+    <div id="study-selected-bar" style="display:none;background:var(--surface2);border:1px solid var(--accent);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:none;align-items:center;justify-content:space-between;gap:10px;">
+      <div style="font-size:0.85rem;color:var(--accent)" id="study-selected-label">Выбрано: 0</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="startSelectedSession()" style="padding:7px 14px;font-size:0.8rem">▶ Изучить выбранные</button>
+        <button onclick="clearStudySelection()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text-muted);cursor:pointer;font-size:0.8rem">✕</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="btn btn-primary" onclick="startLearnSession()" style="flex:1;padding:11px;font-size:0.9rem">▶ Изучить следующий</button>
+      <button onclick="toggleSelectMode()" id="select-mode-btn" class="btn btn-secondary" style="padding:11px 14px;font-size:0.8rem;white-space:nowrap">☑ Выбрать</button>
+    </div>
 
     <!-- New verbs list -->
     <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px">Не изучены</div>
@@ -9975,13 +9992,6 @@ function sm2Update(card, grade) {
   return { interval, easeFactor, repetitions, dueDate, lastReview: todayStr() };
 }
 
-function updateSRS(verbId, correct) {
-  if (!verbId) return;
-  const srs = loadSRS();
-  const grade = correct ? 4 : 1;
-  srs[verbId] = sm2Update(srs[verbId], grade);
-  saveSRS(srs);
-}
 
 async function getSRSDueCount() {
   if (!sbUser) {
@@ -10704,7 +10714,10 @@ async function renderStudyScreen() {
   if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
   const srs = loadSRS();
   const group = document.getElementById('study-group-filter')?.value || 'all';
-  const pool = group === 'all' ? VERBS : VERBS.filter(v => v.group === group);
+  const search = document.getElementById('study-search')?.value.trim().toLowerCase() || '';
+  let pool = group === 'all' ? VERBS : VERBS.filter(v => v.group === group);
+  if (search) pool = pool.filter(v => v.inf.includes(search) || v.meaning.toLowerCase().includes(search));
+
   const newVerbs = pool.filter(v => !srs[v.id]);
   const knownVerbs = pool.filter(v => srs[v.id]);
 
@@ -10713,46 +10726,115 @@ async function renderStudyScreen() {
   if (nc) nc.textContent = newVerbs.length;
   if (kc) kc.textContent = knownVerbs.length;
 
-  // New verbs list — show ALL not just 30
+  // New verbs list
   const list = document.getElementById('study-new-list');
   if (list) {
     if (newVerbs.length === 0) {
       list.innerHTML = '<div style="color:var(--good);padding:16px;text-align:center">🎉 Все глаголы изучены!</div>';
     } else {
-      list.innerHTML = newVerbs.map(v => `
-        <div onclick="learnVerbStart('${v.id}')"
-          style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;"
-          onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <div>
+      list.innerHTML = newVerbs.map(v => {
+        const selected = studySelectedIds.has(v.id);
+        return `<div onclick="${studySelectMode ? `toggleVerbSelect('${v.id}')` : `learnVerbStart('${v.id}')`}"
+          style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:${selected ? 'var(--surface2)' : 'var(--surface)'};border:1px solid ${selected ? 'var(--accent)' : 'var(--border)'};border-radius:8px;cursor:pointer;gap:10px;">
+          ${studySelectMode ? `<div style="width:18px;height:18px;border:2px solid ${selected ? 'var(--accent)' : 'var(--border)'};border-radius:4px;background:${selected ? 'var(--accent)' : 'none'};flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#0e0e10;font-size:0.75rem">${selected ? '✓' : ''}</div>` : ''}
+          <div style="flex:1;min-width:0;">
             <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${v.inf}</span>
             <span style="font-size:0.8rem;color:var(--text-muted);margin-left:10px">${v.meaning}</span>
           </div>
-          <span style="font-size:0.7rem;color:var(--text-dim);background:var(--surface2);padding:2px 7px;border-radius:6px">${v.group.toUpperCase()}</span>
-        </div>`).join('');
+          <span style="font-size:0.68rem;color:var(--text-dim);background:var(--surface2);padding:2px 7px;border-radius:6px;flex-shrink:0">${v.group.toUpperCase()}</span>
+        </div>`;
+      }).join('');
     }
   }
 
   // Known verbs list
   const knownList = document.getElementById('study-known-list');
-  if (knownList) {
+  if (knownList && knownList.style.display !== 'none') {
     knownList.innerHTML = knownVerbs.length === 0
       ? '<div style="color:var(--text-muted);padding:12px;text-align:center;font-size:0.85rem">Пока нет изученных</div>'
       : knownVerbs.map(v => {
           const card = srs[v.id];
-          const interval = card?.interval || 1;
-          const due = card?.dueDate || '—';
-          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;opacity:0.7">
+          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;opacity:0.75">
             <div>
               <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${v.inf}</span>
               <span style="font-size:0.8rem;color:var(--text-muted);margin-left:10px">${v.meaning}</span>
             </div>
-            <div style="text-align:right;">
-              <div style="font-size:0.7rem;color:var(--good)">интервал ${interval}д</div>
-              <div style="font-size:0.68rem;color:var(--text-dim)">повтор ${due}</div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:0.7rem;color:var(--good)">интервал ${card?.interval || 1}д</div>
+              <div style="font-size:0.68rem;color:var(--text-dim)">${card?.dueDate || '—'}</div>
             </div>
           </div>`;
         }).join('');
   }
+}
+
+let studySelectMode = false;
+let studySelectedIds = new Set();
+let studyQueue = []; // queue for selected session
+let studyQueueIdx = 0;
+
+function toggleSelectMode() {
+  studySelectMode = !studySelectMode;
+  const btn = document.getElementById('select-mode-btn');
+  if (btn) {
+    btn.style.background = studySelectMode ? 'var(--accent)' : '';
+    btn.style.color = studySelectMode ? '#0e0e10' : '';
+  }
+  if (!studySelectMode) {
+    studySelectedIds.clear();
+    updateSelectedBar();
+  }
+  renderStudyScreen();
+}
+
+function toggleVerbSelect(id) {
+  if (studySelectedIds.has(id)) studySelectedIds.delete(id);
+  else studySelectedIds.add(id);
+  updateSelectedBar();
+  renderStudyScreen();
+}
+
+function updateSelectedBar() {
+  const bar = document.getElementById('study-selected-bar');
+  const label = document.getElementById('study-selected-label');
+  if (!bar) return;
+  if (studySelectedIds.size > 0) {
+    bar.style.display = 'flex';
+    label.textContent = `Выбрано: ${studySelectedIds.size}`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearStudySelection() {
+  studySelectedIds.clear();
+  studySelectMode = false;
+  const btn = document.getElementById('select-mode-btn');
+  if (btn) { btn.style.background = ''; btn.style.color = ''; }
+  updateSelectedBar();
+  renderStudyScreen();
+}
+
+function startSelectedSession() {
+  if (!studySelectedIds.size) return;
+  studyQueue = Array.from(studySelectedIds).map(id => VERBS.find(v => v.id === id)).filter(Boolean);
+  studyQueueIdx = 0;
+  studySelectMode = false;
+  clearStudySelection();
+  if (studyQueue.length) learnVerbStart(studyQueue[0].id);
+}
+
+function startLearnSession() {
+  const srs = loadSRS();
+  const group = document.getElementById('study-group-filter')?.value || 'all';
+  const search = document.getElementById('study-search')?.value.trim().toLowerCase() || '';
+  let pool = group === 'all' ? VERBS : VERBS.filter(v => v.group === group);
+  if (search) pool = pool.filter(v => v.inf.includes(search) || v.meaning.toLowerCase().includes(search));
+  const newVerbs = pool.filter(v => !srs[v.id]);
+  if (!newVerbs.length) { alert('Все глаголы уже изучены!'); return; }
+  studyQueue = newVerbs;
+  studyQueueIdx = 0;
+  learnVerbStart(newVerbs[0].id);
 }
 
 function toggleKnownList() {
@@ -10763,15 +10845,6 @@ function toggleKnownList() {
   el.style.display = isHidden ? 'flex' : 'none';
   el.style.flexDirection = 'column';
   if (icon) icon.textContent = isHidden ? '▲' : '▼';
-}
-
-function startLearnSession() {
-  const srs = loadSRS();
-  const group = document.getElementById('study-group-filter')?.value || 'all';
-  const pool = group === 'all' ? VERBS : VERBS.filter(v => v.group === group);
-  const newVerbs = pool.filter(v => !srs[v.id]);
-  if (!newVerbs.length) { alert('Все глаголы уже изучены!'); return; }
-  learnVerbStart(newVerbs[0].id);
 }
 
 function learnVerbStart(verbId) {
@@ -10860,7 +10933,24 @@ async function finishLearn(knew) {
   }
   document.getElementById('result-emoji').textContent = knew ? '✅' : '📌';
   document.getElementById('result-title').textContent = knew ? 'Отлично!' : 'Запомним!';
-  document.getElementById('result-text').textContent = `${learnVerb.inf} добавлен в расписание. Повторить завтра.`;
+
+  studyQueueIdx++;
+  const hasNext = studyQueueIdx < studyQueue.length;
+  document.getElementById('result-text').textContent = hasNext
+    ? `${learnVerb.inf} добавлен. Осталось в очереди: ${studyQueue.length - studyQueueIdx}`
+    : `${learnVerb.inf} добавлен в расписание. Повторить завтра.`;
+
+  // Update next button
+  const nextBtn = document.querySelector('#study-result-view .btn-primary');
+  if (nextBtn) {
+    if (hasNext) {
+      nextBtn.textContent = '▶ Следующий в очереди';
+      nextBtn.onclick = () => learnVerbStart(studyQueue[studyQueueIdx].id);
+    } else {
+      nextBtn.textContent = '▶ Изучить следующий';
+      nextBtn.onclick = startLearnSession;
+    }
+  }
   showLearnView('study-result-view');
 }
 
