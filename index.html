@@ -9371,7 +9371,7 @@ function showScreen(id) {
   if (id === 'dict') renderDict();
   if (id === 'groups') { renderGroupsHome(); backToGroups(); }
   if (id === 'numbers') renderNumbersScreen();
-  if (id === 'study') renderStudyScreen();
+  if (id === 'study') { if (typeof renderStudyScreen === 'function') renderStudyScreen(); }
   if (id === 'phrases') renderPhrasesScreen();
   if (id === 'leaderboard') renderLeaderboard();
   // Show virtual keyboard for input screens
@@ -10689,7 +10689,155 @@ function toggleRule() {
 
 
 // ════════════════════════════════════════════════
-// PHRASES TRAINER
+// LEARN FLOW (Изучить)
+// ════════════════════════════════════════════════
+let learnVerb = null;
+let learnCheckPronounIdx = 0;
+
+async function renderStudyScreen() {
+  if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
+  const srs = loadSRS();
+  const group = document.getElementById('study-group-filter')?.value || 'all';
+  const pool = group === 'all' ? VERBS : VERBS.filter(v => v.group === group);
+  const newVerbs = pool.filter(v => !srs[v.id]);
+  const knownVerbs = pool.filter(v => srs[v.id]);
+
+  const nc = document.getElementById('study-new-count');
+  const kc = document.getElementById('study-known-count');
+  if (nc) nc.textContent = newVerbs.length;
+  if (kc) kc.textContent = knownVerbs.length;
+
+  const list = document.getElementById('study-new-list');
+  if (!list) return;
+  if (newVerbs.length === 0) {
+    list.innerHTML = '<div style="color:var(--good);padding:16px;text-align:center">🎉 Все глаголы изучены!</div>';
+    return;
+  }
+  list.innerHTML = newVerbs.slice(0, 30).map(v => `
+    <div onclick="learnVerbStart('${v.id}')"
+      style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;"
+      onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div>
+        <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${v.inf}</span>
+        <span style="font-size:0.8rem;color:var(--text-muted);margin-left:10px">${v.meaning}</span>
+      </div>
+      <span style="font-size:0.7rem;color:var(--text-dim)">${v.group.toUpperCase()}</span>
+    </div>`).join('');
+}
+
+function startLearnSession() {
+  const srs = loadSRS();
+  const group = document.getElementById('study-group-filter')?.value || 'all';
+  const pool = group === 'all' ? VERBS : VERBS.filter(v => v.group === group);
+  const newVerbs = pool.filter(v => !srs[v.id]);
+  if (!newVerbs.length) { alert('Все глаголы уже изучены!'); return; }
+  learnVerbStart(newVerbs[0].id);
+}
+
+function learnVerbStart(verbId) {
+  learnVerb = VERBS.find(v => v.id === verbId);
+  if (!learnVerb) return;
+  showLearnView('study-card-view');
+  renderLearnCard();
+}
+
+function renderLearnCard() {
+  const v = learnVerb;
+  const GROUP_NAMES = {er:'1-я группа (-ER)',ir:'2-я группа (-IR)',re:'3-я группа (-RE)',irr:'Неправильный',ref:'Возвратный'};
+  document.getElementById('learn-badge').textContent = GROUP_NAMES[v.group] || v.group;
+  document.getElementById('learn-inf').textContent = v.inf;
+  document.getElementById('learn-meaning').textContent = v.meaning;
+  document.getElementById('study-step-label').textContent = 'Шаг 1 из 2 — знакомство';
+
+  const pronouns = ['je','tu','il/elle','nous','vous','ils/elles'];
+  const forms = v.conj?.present || [];
+  const table = document.getElementById('learn-conj-table');
+  if (table) table.innerHTML = pronouns.map((p, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:6px;">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:var(--accent);min-width:52px">${p}</span>
+      <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${forms[i] || '—'}</span>
+      <button onclick="speak('${p} ${forms[i] || ''}')" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:0.8rem;margin-left:auto;padding:2px 4px">🔊</button>
+    </div>`).join('');
+
+  const ex = document.getElementById('learn-example');
+  if (ex) ex.textContent = v.ex?.present || '';
+  speak(v.inf);
+}
+
+function learnAgain() { renderLearnCard(); }
+
+function startLearnCheck() {
+  learnCheckPronounIdx = Math.floor(Math.random() * 6);
+  const pronouns = ['je','tu','il/elle','nous','vous','ils/elles'];
+  const GROUP_NAMES = {er:'1-я группа (-ER)',ir:'2-я группа (-IR)',re:'3-я группа (-RE)',irr:'Неправильный',ref:'Возвратный'};
+  document.getElementById('check-badge').textContent = GROUP_NAMES[learnVerb.group] || learnVerb.group;
+  document.getElementById('check-inf').textContent = learnVerb.inf;
+  document.getElementById('check-meaning').textContent = learnVerb.meaning;
+  document.getElementById('check-pronoun').textContent = pronouns[learnCheckPronounIdx] + ' ...';
+  document.getElementById('check-input').value = '';
+  document.getElementById('check-feedback').innerHTML = '';
+  document.getElementById('study-step-label').textContent = 'Шаг 2 из 2 — проверка';
+  showLearnView('study-check-view');
+  setTimeout(() => document.getElementById('check-input')?.focus(), 100);
+}
+
+function checkLearnAnswer() {
+  const input = document.getElementById('check-input')?.value.trim().toLowerCase();
+  const correct = (learnVerb.conj?.present?.[learnCheckPronounIdx] || '').toLowerCase();
+  const isCorrect = input === correct;
+  const fb = document.getElementById('check-feedback');
+  if (isCorrect) {
+    fb.innerHTML = `<div class="feedback-msg correct">✓ Правильно!</div>`;
+    speak(correct);
+    setTimeout(() => finishLearn(true), 800);
+  } else {
+    fb.innerHTML = `<div class="feedback-msg wrong">✗ Правильно: <strong>${correct}</strong></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-secondary" onclick="startLearnCheck()" style="flex:1;padding:9px">🔄 Ещё раз</button>
+        <button class="btn btn-primary" onclick="finishLearn(false)" style="flex:1;padding:9px">Всё равно запомнил</button>
+      </div>`;
+    speak(correct);
+  }
+}
+
+async function finishLearn(knew) {
+  const srs = loadSRS();
+  srs[learnVerb.id] = {
+    interval: 1, easeFactor: 2.5,
+    repetitions: knew ? 1 : 0,
+    dueDate: addDays(todayStr(), 1),
+    lastReview: todayStr()
+  };
+  localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
+  if (sbUser) {
+    await sb.from('srs').upsert({
+      user_id: sbUser.id, verb_id: learnVerb.id,
+      interval: 1, ease_factor: 2.5,
+      repetitions: knew ? 1 : 0,
+      due_date: addDays(todayStr(), 1),
+      last_review: todayStr()
+    }, { onConflict: 'user_id,verb_id' }).catch(()=>{});
+  }
+  document.getElementById('result-emoji').textContent = knew ? '✅' : '📌';
+  document.getElementById('result-title').textContent = knew ? 'Отлично!' : 'Запомним!';
+  document.getElementById('result-text').textContent = `${learnVerb.inf} добавлен в расписание. Повторить завтра.`;
+  showLearnView('study-result-view');
+}
+
+function backToLearnCard() { showLearnView('study-card-view'); }
+
+function exitLearnSession() {
+  learnVerb = null;
+  showLearnView('study-pick');
+  renderStudyScreen();
+}
+
+function showLearnView(id) {
+  ['study-pick','study-card-view','study-check-view','study-result-view'].forEach(v => {
+    const el = document.getElementById(v);
+    if (el) el.style.display = v === id ? 'block' : 'none';
+  });
+}
 // ════════════════════════════════════════════════
 let phGood = 0, phBad = 0, phStreak = 0;
 let currentPhrase = null;
