@@ -2043,7 +2043,7 @@ input:-webkit-autofill:focus {
         <h2 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:4px">🎧 Изучить</h2>
         <div style="font-size:0.78rem;color:var(--text-muted)">Познакомься с новым глаголом, потом закрепи в тренажёре</div>
       </div>
-      <select class="select-control" id="study-group-filter">
+      <select class="select-control" id="study-group-filter" onchange="renderStudyScreen()">
         <option value="all">Все группы</option>
         <option value="er">-ER</option>
         <option value="ir">-IR</option>
@@ -2071,7 +2071,13 @@ input:-webkit-autofill:focus {
 
     <!-- New verbs list -->
     <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px">Не изучены</div>
-    <div id="study-new-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="study-new-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:24px;"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;cursor:pointer;" onclick="toggleKnownList()">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">Изучены</div>
+      <span id="known-toggle-icon" style="font-size:0.8rem;color:var(--text-muted)">▼</span>
+    </div>
+    <div id="study-known-list" style="display:none;flex-direction:column;gap:6px;"></div>
   </div>
 
   <!-- Step 2: Learn card -->
@@ -10707,22 +10713,56 @@ async function renderStudyScreen() {
   if (nc) nc.textContent = newVerbs.length;
   if (kc) kc.textContent = knownVerbs.length;
 
+  // New verbs list — show ALL not just 30
   const list = document.getElementById('study-new-list');
-  if (!list) return;
-  if (newVerbs.length === 0) {
-    list.innerHTML = '<div style="color:var(--good);padding:16px;text-align:center">🎉 Все глаголы изучены!</div>';
-    return;
+  if (list) {
+    if (newVerbs.length === 0) {
+      list.innerHTML = '<div style="color:var(--good);padding:16px;text-align:center">🎉 Все глаголы изучены!</div>';
+    } else {
+      list.innerHTML = newVerbs.map(v => `
+        <div onclick="learnVerbStart('${v.id}')"
+          style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;"
+          onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div>
+            <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${v.inf}</span>
+            <span style="font-size:0.8rem;color:var(--text-muted);margin-left:10px">${v.meaning}</span>
+          </div>
+          <span style="font-size:0.7rem;color:var(--text-dim);background:var(--surface2);padding:2px 7px;border-radius:6px">${v.group.toUpperCase()}</span>
+        </div>`).join('');
+    }
   }
-  list.innerHTML = newVerbs.slice(0, 30).map(v => `
-    <div onclick="learnVerbStart('${v.id}')"
-      style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;"
-      onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-      <div>
-        <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${v.inf}</span>
-        <span style="font-size:0.8rem;color:var(--text-muted);margin-left:10px">${v.meaning}</span>
-      </div>
-      <span style="font-size:0.7rem;color:var(--text-dim)">${v.group.toUpperCase()}</span>
-    </div>`).join('');
+
+  // Known verbs list
+  const knownList = document.getElementById('study-known-list');
+  if (knownList) {
+    knownList.innerHTML = knownVerbs.length === 0
+      ? '<div style="color:var(--text-muted);padding:12px;text-align:center;font-size:0.85rem">Пока нет изученных</div>'
+      : knownVerbs.map(v => {
+          const card = srs[v.id];
+          const interval = card?.interval || 1;
+          const due = card?.dueDate || '—';
+          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;opacity:0.7">
+            <div>
+              <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${v.inf}</span>
+              <span style="font-size:0.8rem;color:var(--text-muted);margin-left:10px">${v.meaning}</span>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:0.7rem;color:var(--good)">интервал ${interval}д</div>
+              <div style="font-size:0.68rem;color:var(--text-dim)">повтор ${due}</div>
+            </div>
+          </div>`;
+        }).join('');
+  }
+}
+
+function toggleKnownList() {
+  const el = document.getElementById('study-known-list');
+  const icon = document.getElementById('known-toggle-icon');
+  if (!el) return;
+  const isHidden = el.style.display === 'none';
+  el.style.display = isHidden ? 'flex' : 'none';
+  el.style.flexDirection = 'column';
+  if (icon) icon.textContent = isHidden ? '▲' : '▼';
 }
 
 function startLearnSession() {
