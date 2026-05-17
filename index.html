@@ -1140,7 +1140,10 @@ input:-webkit-autofill:focus {
   </div>
 
   <!-- Verbs stats -->
-  <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:8px">✏️ Глаголы</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">✏️ Глаголы</div>
+    <button onclick="renderHome()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8rem;padding:2px 6px;">🔄</button>
+  </div>
   <div class="stats-row" id="home-stats-row" style="margin-bottom:16px">
     <div class="stat-card"><div class="num" id="hs-verbs">0</div><div class="label">изучено</div></div>
     <div class="stat-card"><div class="num" id="hs-total">0</div><div class="label">попыток</div></div>
@@ -9152,8 +9155,8 @@ function loginProfile(name) {
   document.getElementById('main-app').style.display = 'block';
 
   resetTrainer();
-  renderHome(); // показываем сразу с нулями
-  setTimeout(() => renderHome(), 500); // перерисуем после загрузки данных
+  renderHome();
+  setTimeout(() => renderHome(), 2000);
 }
 
 function logoutProfile() {
