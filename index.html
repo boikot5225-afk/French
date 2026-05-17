@@ -10879,59 +10879,88 @@ function renderLearnCard() {
 
 function learnAgain() { renderLearnCard(); }
 
+let learnCheckQueue = [];   // indices 0-5 in random order
+let learnCheckPos = 0;      // current position in queue
+let learnCheckErrors = 0;   // total errors this session
+
 function startLearnCheck() {
-  learnCheckPronounIdx = Math.floor(Math.random() * 6);
+  // Shuffle all 6 pronoun indices
+  learnCheckQueue = [0,1,2,3,4,5].sort(() => Math.random() - 0.5);
+  learnCheckPos = 0;
+  learnCheckErrors = 0;
+  showLearnCheckForm();
+}
+
+function showLearnCheckForm() {
+  const idx = learnCheckQueue[learnCheckPos];
   const pronouns = ['je','tu','il/elle','nous','vous','ils/elles'];
   const GROUP_NAMES = {er:'1-я группа (-ER)',ir:'2-я группа (-IR)',re:'3-я группа (-RE)',irr:'Неправильный',ref:'Возвратный'};
+
   document.getElementById('check-badge').textContent = GROUP_NAMES[learnVerb.group] || learnVerb.group;
   document.getElementById('check-inf').textContent = learnVerb.inf;
   document.getElementById('check-meaning').textContent = learnVerb.meaning;
-  document.getElementById('check-pronoun').textContent = pronouns[learnCheckPronounIdx] + ' ...';
+  document.getElementById('check-pronoun').textContent = pronouns[idx] + ' ...';
   document.getElementById('check-input').value = '';
   document.getElementById('check-feedback').innerHTML = '';
-  document.getElementById('study-step-label').textContent = 'Шаг 2 из 2 — проверка';
+
+  // Progress indicator
+  document.getElementById('study-step-label').textContent =
+    `Шаг 2 из 2 — проверка (${learnCheckPos + 1} / ${learnCheckQueue.length})`;
+
   showLearnView('study-check-view');
   setTimeout(() => document.getElementById('check-input')?.focus(), 100);
 }
 
 function checkLearnAnswer() {
+  const idx = learnCheckQueue[learnCheckPos];
   const input = document.getElementById('check-input')?.value.trim().toLowerCase();
-  const correct = (learnVerb.conj?.present?.[learnCheckPronounIdx] || '').toLowerCase();
+  const correct = (learnVerb.conj?.present?.[idx] || '').toLowerCase();
   const isCorrect = input === correct;
   const fb = document.getElementById('check-feedback');
+
   if (isCorrect) {
-    fb.innerHTML = `<div class="feedback-msg correct">✓ Правильно!</div>`;
     speak(correct);
-    setTimeout(() => finishLearn(true), 800);
+    learnCheckPos++;
+    if (learnCheckPos >= learnCheckQueue.length) {
+      // All 6 done!
+      finishLearn();
+    } else {
+      fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:8px">✓ Правильно!</div>`;
+      setTimeout(() => showLearnCheckForm(), 600);
+    }
   } else {
-    fb.innerHTML = `<div class="feedback-msg wrong">✗ Правильно: <strong>${correct}</strong></div>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <button class="btn btn-secondary" onclick="startLearnCheck()" style="flex:1;padding:9px">🔄 Ещё раз</button>
-        <button class="btn btn-primary" onclick="finishLearn(false)" style="flex:1;padding:9px">Всё равно запомнил</button>
-      </div>`;
+    learnCheckErrors++;
     speak(correct);
+    fb.innerHTML = `<div class="feedback-msg wrong">✗ Правильно: <strong>${correct}</strong></div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-top:6px">Эта форма вернётся в конец очереди</div>`;
+    // Push this index to end of queue
+    learnCheckQueue.push(idx);
+    setTimeout(() => showLearnCheckForm(), 1200);
   }
 }
 
-async function finishLearn(knew) {
+function finishLearn() {
+  // Interval: 2 days if no errors, 1 day if had errors
+  const interval = learnCheckErrors === 0 ? 2 : 1;
   const srs = loadSRS();
   srs[learnVerb.id] = {
-    interval: 1, easeFactor: 2.5,
-    repetitions: knew ? 1 : 0,
-    dueDate: addDays(todayStr(), 1),
+    interval, easeFactor: 2.5,
+    repetitions: learnCheckErrors === 0 ? 1 : 0,
+    dueDate: addDays(todayStr(), interval),
     lastReview: todayStr()
   };
   localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
 
-  // Show result immediately - don't wait for Supabase
-  document.getElementById('result-emoji').textContent = knew ? '✅' : '📌';
-  document.getElementById('result-title').textContent = knew ? 'Отлично!' : 'Запомним!';
+  // Show result immediately
+  document.getElementById('result-emoji').textContent = learnCheckErrors === 0 ? '🎉' : '✅';
+  document.getElementById('result-title').textContent = learnCheckErrors === 0 ? 'Отлично! Без ошибок!' : 'Изучен!';
 
   studyQueueIdx++;
   const hasNext = studyQueueIdx < studyQueue.length;
+  const errText = learnCheckErrors > 0 ? ` (${learnCheckErrors} ошибок)` : '';
   document.getElementById('result-text').textContent = hasNext
-    ? `${learnVerb.inf} добавлен. Осталось в очереди: ${studyQueue.length - studyQueueIdx}`
-    : `${learnVerb.inf} добавлен в расписание. Повторить завтра.`;
+    ? `${learnVerb.inf} добавлен${errText}. Осталось: ${studyQueue.length - studyQueueIdx}`
+    : `${learnVerb.inf} добавлен${errText}. Повторить через ${interval} дн.`;
 
   const nextBtn = document.querySelector('#study-result-view .btn-primary');
   if (nextBtn) {
@@ -10949,9 +10978,9 @@ async function finishLearn(knew) {
   if (sbUser) {
     sb.from('srs').upsert({
       user_id: sbUser.id, verb_id: learnVerb.id,
-      interval: 1, ease_factor: 2.5,
-      repetitions: knew ? 1 : 0,
-      due_date: addDays(todayStr(), 1),
+      interval, ease_factor: 2.5,
+      repetitions: learnCheckErrors === 0 ? 1 : 0,
+      due_date: addDays(todayStr(), interval),
       last_review: todayStr()
     }, { onConflict: 'user_id,verb_id' }).catch(()=>{});
   }
