@@ -8451,17 +8451,21 @@ async function doLogin() {
       loadVerbsFromCloud(), sbLoadStats(), sbLoadSRS(), sbLoadMeta()
     ]);
 
-    // Merge cloud stats with local (cloud wins on conflict)
+    // Merge cloud stats with local - take the one with more attempts
     if (cloudStats && Object.keys(cloudStats).length) {
-      const localStats = (() => { try { return JSON.parse(localStorage.getItem('conj_' + profile.username + '_stats') || '{}'); } catch { return {}; } })();
-      const merged = { ...localStats, ...cloudStats };
-      localStorage.setItem('conj_' + profile.username + '_stats', JSON.stringify(merged));
-      // Push any local-only stats to cloud
-      const localOnly = Object.fromEntries(Object.entries(localStats).filter(([k]) => !cloudStats[k]));
-      if (Object.keys(localOnly).length) sbSaveStats(merged).catch(()=>{});
-    } else if (cloudStats) {
-      // Cloud is empty — push local stats to cloud
-      const localStats = (() => { try { return JSON.parse(localStorage.getItem('conj_' + profile.username + '_stats') || '{}'); } catch { return {}; } })();
+      const localStats = (() => { try { return JSON.parse(localStorage.getItem('conj_' + profile.username.toLowerCase() + '_stats') || '{}'); } catch { return {}; } })();
+      const merged = { ...localStats };
+      Object.entries(cloudStats).forEach(([k, v]) => {
+        if (!merged[k] || v.total > merged[k].total) {
+          merged[k] = v;
+        }
+      });
+      localStorage.setItem('conj_' + profile.username.toLowerCase() + '_stats', JSON.stringify(merged));
+      // Push local-only data to cloud
+      sbSaveStats(merged).catch(()=>{});
+    } else {
+      // Cloud empty - push local to cloud
+      const localStats = (() => { try { return JSON.parse(localStorage.getItem('conj_' + profile.username.toLowerCase() + '_stats') || '{}'); } catch { return {}; } })();
       if (Object.keys(localStats).length) sbSaveStats(localStats).catch(()=>{});
     }
 
@@ -9019,12 +9023,13 @@ function loadStats() {
   if (!currentProfile) return {};
   try { return JSON.parse(localStorage.getItem(profileKey('stats')) || '{}'); } catch { return {}; }
 }
-function saveStats(s) {
+
+async function saveStats(s) {
   if (!currentProfile) return;
-  // Always save to localStorage as cache
-  try { localStorage.setItem(profileKey('stats'), JSON.stringify(s)); } catch(e) {}
-  // Save to Supabase if logged in
-  if (sbUser) sbSaveStats(s).catch(e => console.error('sbSaveStats error:', e));
+  localStorage.setItem(profileKey('stats'), JSON.stringify(s));
+  if (sbUser) {
+    try { await sbSaveStats(s); } catch(e) { console.error('saveStats error:', e); }
+  }
 }
 function loadMeta() {
   if (!currentProfile) return {};
@@ -9905,22 +9910,30 @@ function getSRSDueVerbs(pool) {
   });
 }
 
-function recordResult(correct) {
-  if (!currentVerb) { console.log('recordResult: no currentVerb'); return; }
+async function recordResult(correct) {
+  if (!currentVerb) return;
+
+  // Update localStorage
   const stats = loadStats();
   const key = currentVerb.id;
   if (!stats[key]) stats[key] = { total: 0, correct: 0 };
   stats[key].total++;
   if (correct) stats[key].correct++;
-  console.log('recordResult:', key, JSON.stringify(stats[key]), 'correct:', correct);
 
-  // tense stats
   const tkey = 'tense_' + currentTense;
   if (!stats[tkey]) stats[tkey] = { total: 0, correct: 0 };
   stats[tkey].total++;
   if (correct) stats[tkey].correct++;
 
-  saveStats(stats);
+  localStorage.setItem(profileKey('stats'), JSON.stringify(stats));
+
+  // Save single row to Supabase immediately
+  if (sbUser) {
+    sb.from('stats').upsert(
+      { user_id: sbUser.id, key, total: stats[key].total, correct: stats[key].correct },
+      { onConflict: 'user_id,key' }
+    ).catch(e => console.error('stats save error:', e));
+  }
 
   // SRS update
   updateSRS(currentVerb.id, correct);
@@ -9953,11 +9966,10 @@ function showHint() {
 // STATS
 // ════════════════════════════════════════════════
 async function renderStats() {
-  // Read directly from Supabase if logged in, else localStorage
   let stats = {};
   if (sbUser) {
-    const cloudStats = await sbLoadStats();
-    if (cloudStats) stats = cloudStats;
+    const data = await sbLoadStats();
+    if (data) stats = data;
   } else {
     stats = loadStats();
   }
