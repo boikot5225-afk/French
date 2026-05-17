@@ -2036,79 +2036,107 @@ input:-webkit-autofill:focus {
 <!-- STUDY SCREEN -->
 <div id="screen-study" class="screen">
 
-  <!-- Controls -->
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:center;">
-    <select class="select-control" id="study-group" onchange="renderStudyScreen()">
-      <option value="all">Все группы</option>
-      <option value="er">-ER глаголы</option>
-      <option value="ir">-IR глаголы</option>
-      <option value="re">-RE глаголы</option>
-      <option value="irr">Неправильные</option>
-      <option value="ref">Возвратные</option>
-    </select>
-    <select class="select-control" id="study-tense">
-      <option value="present">Présent</option>
-      <option value="passe">Passé composé</option>
-      <option value="imparfait">Imparfait</option>
-      <option value="futur">Futur simple</option>
-      <option value="all">Все времена</option>
-    </select>
-    <button class="btn btn-secondary" onclick="openStudyVerbPicker()" style="white-space:nowrap">📋 Выбрать глаголы</button>
-    <button class="btn btn-primary" onclick="startStudySession()" style="margin-left:auto">▶ Начать изучение</button>
-  </div>
-
-  <div id="study-selection-banner" style="display:none;background:var(--ir-dim);border:1px solid var(--ir);border-radius:8px;padding:10px 18px;font-size:0.82rem;color:var(--ir);margin-bottom:20px;align-items:center;justify-content:space-between;">
-    <span id="study-selection-label">Выбрано: 0 глаголов</span>
-    <button onclick="clearStudySelection()" style="background:none;border:1px solid var(--ir);border-radius:6px;padding:4px 12px;color:var(--ir);cursor:pointer;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;margin-left:16px">✕ Сбросить</button>
-  </div>
-
-  <!-- Verb list to study -->
-  <div id="study-verb-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:24px;"></div>
-
-  <!-- Study session (hidden until started) -->
-  <div id="study-session" style="display:none;">
-
-    <!-- Progress -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <button onclick="stopStudySession()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85rem;padding:0;font-family:'IBM Plex Sans',sans-serif">← Назад</button>
-      <div id="study-progress-label" style="font-size:0.78rem;color:var(--text-muted)">1 / 6</div>
-      <button onclick="startTrainerFromStudy()" class="btn btn-secondary" style="padding:6px 14px;font-size:0.78rem">✏️ Проверить себя</button>
-    </div>
-    <div class="progress-bar-wrap" style="margin-bottom:24px;">
-      <div class="progress-bar-fill" id="study-progress-bar" style="width:0%"></div>
-    </div>
-
-    <!-- Current form card -->
-    <div class="trainer-card" id="study-card" style="min-height:260px;cursor:pointer;" onclick="studyNext()">
-      <div class="group-badge" id="study-badge">—</div>
-      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:1.1rem;color:var(--text-muted);margin-bottom:8px" id="study-inf">—</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.85rem;color:var(--text-muted);margin-bottom:4px" id="study-tense-label">—</div>
-
-      <!-- Pronoun + form -->
-      <div style="display:flex;align-items:baseline;gap:12px;justify-content:center;margin:16px 0 8px;">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:1.1rem;color:var(--accent);min-width:60px;text-align:right" id="study-pronoun">—</div>
-        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.4rem;color:var(--text);line-height:1" id="study-form">—</div>
-        <button onclick="event.stopPropagation();speakStudyCurrent()" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0">🔊</button>
+  <!-- Step 1: Choose verb to learn -->
+  <div id="study-pick" style="">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:4px">🎧 Изучить</h2>
+        <div style="font-size:0.78rem;color:var(--text-muted)">Познакомься с новым глаголом, потом закрепи в тренажёре</div>
       </div>
-
-      <div style="font-size:0.8rem;color:var(--text-dim);font-style:italic;margin-top:8px" id="study-example"></div>
-      <div style="font-size:0.72rem;color:var(--text-dim);margin-top:20px">нажми на карточку → следующая форма</div>
-    </div>
-
-    <!-- Auto-play controls -->
-    <div style="display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap;">
-      <button id="study-auto-btn" class="btn btn-secondary" onclick="toggleStudyAuto()">⏵ Авто-режим</button>
-      <select class="select-control" id="study-speed" style="width:auto">
-        <option value="2000">Пауза 2 сек</option>
-        <option value="3000" selected>Пауза 3 сек</option>
-        <option value="5000">Пауза 5 сек</option>
-        <option value="8000">Пауза 8 сек</option>
+      <select class="select-control" id="study-group-filter">
+        <option value="all">Все группы</option>
+        <option value="er">-ER</option>
+        <option value="ir">-IR</option>
+        <option value="re">-RE</option>
+        <option value="irr">Неправильные</option>
+        <option value="ref">Возвратные</option>
       </select>
     </div>
 
-    <!-- Verb navigation -->
-    <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap;" id="study-verb-nav"></div>
+    <!-- Stats row -->
+    <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:120px;text-align:center;">
+        <div style="font-size:1.6rem;font-weight:600;color:var(--accent)" id="study-new-count">—</div>
+        <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">новых</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:120px;text-align:center;">
+        <div style="font-size:1.6rem;font-weight:600;color:var(--good)" id="study-known-count">—</div>
+        <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">изучено</div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="startLearnSession()" style="width:100%;padding:14px;font-size:1rem;margin-bottom:24px">
+      ▶ Изучить следующий глагол
+    </button>
+
+    <!-- New verbs list -->
+    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px">Не изучены</div>
+    <div id="study-new-list" style="display:flex;flex-direction:column;gap:6px;"></div>
   </div>
+
+  <!-- Step 2: Learn card -->
+  <div id="study-card-view" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="exitLearnSession()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0">← Назад</button>
+      <div style="font-size:0.78rem;color:var(--text-muted)" id="study-step-label">Шаг 1 из 2</div>
+    </div>
+
+    <!-- Verb card -->
+    <div class="trainer-card" style="margin-bottom:16px;">
+      <div class="group-badge" id="learn-badge">—</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.6rem;color:var(--text);margin:12px 0 6px;line-height:1" id="learn-inf">—</div>
+      <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px" id="learn-meaning">—</div>
+      <button onclick="speak(document.getElementById('learn-inf').textContent)" style="background:none;border:1px solid var(--border);border-radius:50%;width:36px;height:36px;cursor:pointer;color:var(--text-muted);font-size:1rem;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">🔊</button>
+
+      <!-- Conjugation table -->
+      <div id="learn-conj-table" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;"></div>
+
+      <!-- Example -->
+      <div style="font-size:0.8rem;color:var(--text-dim);font-style:italic;padding-top:12px;border-top:1px solid var(--border)" id="learn-example"></div>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <button class="btn btn-secondary" onclick="learnAgain()" style="padding:12px">🔄 Показать снова</button>
+      <button class="btn btn-primary" onclick="startLearnCheck()" style="padding:12px">✏️ Закрепить →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Quick check -->
+  <div id="study-check-view" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="backToLearnCard()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0">← Назад</button>
+      <div style="font-size:0.78rem;color:var(--text-muted)">Быстрая проверка</div>
+    </div>
+
+    <div class="trainer-card" style="margin-bottom:16px;">
+      <div class="group-badge" id="check-badge">—</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.2rem;color:var(--text);margin:12px 0 6px" id="check-inf">—</div>
+      <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px" id="check-meaning">—</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:1.2rem;color:var(--accent)" id="check-pronoun">—</div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <input type="text" id="check-input" placeholder="введи форму..." autocomplete="off" autocorrect="off"
+        style="flex:1;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:1rem;outline:none"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')checkLearnAnswer()">
+      <button class="btn btn-primary" onclick="checkLearnAnswer()" style="padding:11px 16px">Проверить</button>
+    </div>
+    <div id="check-feedback" style="min-height:40px;"></div>
+  </div>
+
+  <!-- Step 4: Result -->
+  <div id="study-result-view" style="display:none;text-align:center;padding:24px 0;">
+    <div style="font-size:3rem;margin-bottom:12px" id="result-emoji">✅</div>
+    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;margin-bottom:8px" id="result-title">Отлично!</div>
+    <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:28px" id="result-text">Глагол добавлен в расписание</div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:320px;margin:0 auto;">
+      <button class="btn btn-primary" onclick="startLearnSession()" style="padding:12px">▶ Изучить следующий</button>
+      <button class="btn btn-secondary" onclick="exitLearnSession()" style="padding:12px">← К списку</button>
+    </div>
+  </div>
+
 </div>
 
 <!-- PHRASES SCREEN -->
@@ -8469,8 +8497,16 @@ async function doLogin() {
       if (Object.keys(localStats).length) sbSaveStats(localStats).catch(()=>{});
     }
 
-    if (cloudSRS && Object.keys(cloudSRS).length)
-      localStorage.setItem('conj_' + profile.username + '_srs', JSON.stringify(cloudSRS));
+    if (cloudSRS && Object.keys(cloudSRS).length) {
+      const localSRS = (() => { try { return JSON.parse(localStorage.getItem('conj_' + profile.username.toLowerCase() + '_srs') || '{}'); } catch { return {}; } })();
+      const mergedSRS = { ...localSRS };
+      Object.entries(cloudSRS).forEach(([k, v]) => {
+        if (!mergedSRS[k] || v.interval > mergedSRS[k].interval) {
+          mergedSRS[k] = v;
+        }
+      });
+      localStorage.setItem('conj_' + profile.username.toLowerCase() + '_srs', JSON.stringify(mergedSRS));
+    }
     if (cloudMeta)
       localStorage.setItem('conj_' + profile.username + '_meta', JSON.stringify(cloudMeta));
 
@@ -9035,10 +9071,18 @@ function loadMeta() {
   if (!currentProfile) return {};
   try { return JSON.parse(localStorage.getItem(profileKey('meta')) || '{}'); } catch { return {}; }
 }
-function saveMeta(m) {
+
+async function saveMeta(m) {
   if (!currentProfile) return;
-  try { localStorage.setItem(profileKey('meta'), JSON.stringify(m)); } catch(e) {}
-  if (sbUser) sbSaveMeta(m).catch(()=>{});
+  localStorage.setItem(profileKey('meta'), JSON.stringify(m));
+  if (sbUser) {
+    sb.from('meta').upsert({
+      user_id: sbUser.id,
+      streak: m.streak || 0,
+      best_streak: m.bestStreak || 0,
+      last_active: m.lastActive || todayStr()
+    }, { onConflict: 'user_id' }).catch(e => console.error('meta save error:', e));
+  }
 }
 
 function getProfiles() {
@@ -9352,10 +9396,21 @@ function setGrammar(key) {
 // ════════════════════════════════════════════════
 // HOME
 // ════════════════════════════════════════════════
-function renderHome() {
+async function renderHome() {
   const stats = loadStats();
-  const meta = loadMeta();
   const srs = loadSRS();
+
+  // Read meta from Supabase if logged in
+  let meta = {};
+  if (sbUser) {
+    const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).single().catch(() => ({ data: null }));
+    if (data) {
+      meta = { streak: data.streak, bestStreak: data.best_streak, lastActive: data.last_active };
+      localStorage.setItem(profileKey('meta'), JSON.stringify(meta));
+    }
+  } else {
+    meta = loadMeta();
+  }
 
   // Verb stats (exclude noun_, tense_, prep_, ph_ keys)
   let vTotal = 0, vCorrect = 0, vSeen = new Set();
@@ -9839,10 +9894,47 @@ function loadSRS() {
   if (!currentProfile) return {};
   try { return JSON.parse(localStorage.getItem(profileKey('srs')) || '{}'); } catch { return {}; }
 }
-function saveSRS(s) {
+
+async function saveSRS(s) {
   if (!currentProfile) return;
-  try { localStorage.setItem(profileKey('srs'), JSON.stringify(s)); } catch(e) {}
-  if (sbUser) sbSaveSRS(s).catch(()=>{});
+  localStorage.setItem(profileKey('srs'), JSON.stringify(s));
+  if (sbUser) {
+    try { await sbSaveSRS(s); } catch(e) { console.error('saveSRS error:', e); }
+  }
+}
+
+async function updateSRS(verbId, correct) {
+  if (!verbId || !sbUser) return;
+  const grade = correct ? 4 : 1;
+
+  // Load current card from Supabase
+  const { data } = await sb.from('srs').select('*').eq('user_id', sbUser.id).eq('verb_id', verbId).single().catch(() => ({ data: null }));
+
+  const card = data ? {
+    interval: data.interval,
+    easeFactor: data.ease_factor,
+    repetitions: data.repetitions,
+    dueDate: data.due_date
+  } : null;
+
+  const updated = sm2Update(card, grade);
+
+  // Save single row to Supabase
+  await sb.from('srs').upsert({
+    user_id: sbUser.id,
+    verb_id: verbId,
+    interval: updated.interval,
+    ease_factor: updated.easeFactor,
+    repetitions: updated.repetitions,
+    due_date: updated.dueDate,
+    last_review: updated.lastReview,
+    marked_known: updated.markedKnown || false
+  }, { onConflict: 'user_id,verb_id' }).catch(e => console.error('SRS save error:', e));
+
+  // Update localStorage cache
+  const srs = loadSRS();
+  srs[verbId] = updated;
+  localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
 }
 
 function todayStr() {
@@ -9885,14 +9977,18 @@ function updateSRS(verbId, correct) {
   saveSRS(srs);
 }
 
-function getSRSDueCount() {
-  const srs = loadSRS();
-  const today = todayStr();
-  return VERBS.filter(v => {
-    const card = srs[v.id];
-    if (!card) return false; // never seen
-    return card.dueDate <= today;
-  }).length;
+async function getSRSDueCount() {
+  if (!sbUser) {
+    const srs = loadSRS();
+    const today = todayStr();
+    return VERBS.filter(v => { const c = srs[v.id]; return c && c.dueDate <= today; }).length;
+  }
+  const { data } = await sb.from('srs')
+    .select('verb_id')
+    .eq('user_id', sbUser.id)
+    .lte('due_date', todayStr())
+    .catch(() => ({ data: [] }));
+  return data ? data.length : 0;
 }
 
 function getSRSNewCount() {
@@ -10592,274 +10688,6 @@ function toggleRule() {
 
 
 
-// ════════════════════════════════════════════════
-// STUDY MODE
-// ════════════════════════════════════════════════
-let studySelectedIds = new Set();
-let studyVerbs = [];       // verbs in current session
-let studyVerbIdx = 0;      // current verb index
-let studyFormIdx = 0;      // current form index (0–5)
-let studyTenses = [];      // tenses to study
-let studyAutoTimer = null;
-let studyAutoRunning = false;
-
-function getStudyVerbs() {
-  const group = document.getElementById('study-group').value;
-  let verbs = VERBS.filter(v => v.conj);
-  if (studySelectedIds.size > 0) {
-    verbs = verbs.filter(v => studySelectedIds.has(v.id));
-  } else {
-    if (group !== 'all') verbs = verbs.filter(v => v.group === group);
-  }
-  return verbs.sort((a,b) => a.inf.localeCompare(b.inf, 'fr'));
-}
-
-function getStudyTenses() {
-  const t = document.getElementById('study-tense').value;
-  return t === 'all' ? ['present','passe','imparfait','futur'] : [t];
-}
-
-function renderStudyScreen() {
-  const verbs = getStudyVerbs();
-  const badgeColor = {er:'var(--er)',ir:'var(--ir)',re:'var(--re)',irr:'var(--irr)',ref:'var(--ref)'};
-  const badgeBg    = {er:'var(--er-dim)',ir:'var(--ir-dim)',re:'var(--re-dim)',irr:'var(--irr-dim)',ref:'var(--ref-dim)'};
-
-  document.getElementById('study-verb-list').innerHTML = verbs.map(v => `
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:border-color 0.2s"
-      onclick="studyOneVerb('${v.id}')"
-      onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-      <div style="font-style:italic;font-size:0.95rem;margin-bottom:4px">${v.inf}</div>
-      <div style="font-size:0.73rem;color:var(--text-muted);margin-bottom:8px">${v.meaning}</div>
-      <span style="font-size:0.6rem;padding:2px 7px;border-radius:8px;background:${badgeBg[v.group]};color:${badgeColor[v.group]};font-family:'IBM Plex Mono',monospace;text-transform:uppercase">${v.group.toUpperCase()}</span>
-    </div>`).join('') || '<div style="color:var(--text-muted);padding:20px;text-align:center">Нет глаголов для выбранных фильтров</div>';
-}
-
-function studyOneVerb(id) {
-  const verb = VERBS.find(v => v.id === id);
-  if (!verb) return;
-  studyVerbs = [verb];
-  studyTenses = getStudyTenses();
-  studyVerbIdx = 0;
-  studyFormIdx = 0;
-  showStudySession();
-}
-
-function startStudySession() {
-  studyVerbs = getStudyVerbs();
-  if (!studyVerbs.length) return;
-  studyTenses = getStudyTenses();
-  studyVerbIdx = 0;
-  studyFormIdx = 0;
-  showStudySession();
-}
-
-function showStudySession() {
-  document.getElementById('study-verb-list').style.display = 'none';
-  document.getElementById('study-session').style.display = 'block';
-  document.querySelectorAll('.trainer-controls, #study-selection-banner, #study-group, #study-tense, .btn').forEach(() => {});
-  renderStudyVerbNav();
-  renderStudyCard();
-}
-
-function stopStudySession() {
-  if (studyAutoTimer) { clearInterval(studyAutoTimer); studyAutoTimer = null; }
-  studyAutoRunning = false;
-  document.getElementById('study-auto-btn').textContent = '⏵ Авто-режим';
-  document.getElementById('study-verb-list').style.display = 'grid';
-  document.getElementById('study-session').style.display = 'none';
-  renderStudyScreen();
-}
-
-function renderStudyVerbNav() {
-  document.getElementById('study-verb-nav').innerHTML = studyVerbs.map((v,i) =>
-    `<button onclick="jumpStudyVerb(${i})" style="padding:5px 12px;border-radius:16px;font-size:0.75rem;cursor:pointer;border:1px solid ${i===studyVerbIdx?'var(--accent)':'var(--border)'};background:${i===studyVerbIdx?'var(--accent)':'var(--surface2)'};color:${i===studyVerbIdx?'#0e0e10':'var(--text-muted)'};font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s">${v.inf}</button>`
-  ).join('');
-}
-
-function jumpStudyVerb(idx) {
-  studyVerbIdx = idx;
-  studyFormIdx = 0;
-  renderStudyCard();
-  renderStudyVerbNav();
-}
-
-// Returns all {tense, pronounIdx, form, pronoun} steps for current verb
-function getStudySteps(verb) {
-  const steps = [];
-  for (const tense of studyTenses) {
-    for (let i = 0; i < 6; i++) {
-      let form;
-      if (tense === 'passe') {
-        const aux = verb.aux === 'avoir'
-          ? ['ai','as','a','avons','avez','ont'][i]
-          : ['suis','es','est','sommes','êtes','sont'][i];
-        form = elide(PRONOUNS[i] + ' ' + aux + ' ' + verb.pp);
-      } else if (verb.reflexive) {
-        const f = verb.conj[tense]?.[i] || '';
-        const rp = getReflexivePronoun(i, f);
-        form = elide(PRONOUNS[i] + ' ' + rp + f);
-      } else {
-        const f = verb.conj[tense]?.[i];
-        if (!f) continue;
-        form = elide(PRONOUNS[i] + ' ' + f);
-      }
-      steps.push({ tense, pronounIdx: i, form, pronoun: PRONOUNS[i] });
-    }
-  }
-  return steps;
-}
-
-function renderStudyCard() {
-  const verb = studyVerbs[studyVerbIdx];
-  if (!verb) return;
-
-  const steps = getStudySteps(verb);
-  if (!steps.length) return;
-  if (studyFormIdx >= steps.length) studyFormIdx = 0;
-
-  const step = steps[studyFormIdx];
-  const total = steps.length;
-
-  // Progress
-  const globalStep = studyVerbIdx * steps.length + studyFormIdx;
-  const globalTotal = studyVerbs.length * steps.length;
-  document.getElementById('study-progress-label').textContent =
-    `Глагол ${studyVerbIdx+1}/${studyVerbs.length} · Форма ${studyFormIdx+1}/${total}`;
-  document.getElementById('study-progress-bar').style.width =
-    Math.round(globalStep / globalTotal * 100) + '%';
-
-  // Badge
-  const badgeEl = document.getElementById('study-badge');
-  badgeEl.className = 'group-badge ' + (BADGE_CLASS[verb.group] || 'badge-irr');
-  badgeEl.textContent = GROUP_LABELS[verb.group] + ' · ' + TENSE_NAMES[step.tense];
-
-  document.getElementById('study-inf').textContent = verb.inf + ' — ' + verb.meaning;
-  document.getElementById('study-tense-label').textContent = TENSE_NAMES[step.tense];
-
-  // Split form into pronoun + verb
-  const parts = step.form.split(' ');
-  const pronounPart = parts[0];
-  const verbPart = parts.slice(1).join(' ');
-  document.getElementById('study-pronoun').textContent = pronounPart;
-  document.getElementById('study-form').textContent = verbPart;
-
-  // Example
-  const ex = buildExample(verb, step.tense, step.pronounIdx);
-  document.getElementById('study-example').textContent = ex;
-
-  // Auto-speak disabled - use 🔊 button
-}
-
-function speakStudyCurrent() {
-  const verb = studyVerbs[studyVerbIdx];
-  if (!verb) return;
-  const steps = getStudySteps(verb);
-  if (steps[studyFormIdx]) speak(steps[studyFormIdx].form);
-}
-
-function studyNext() {
-  const verb = studyVerbs[studyVerbIdx];
-  if (!verb) return;
-  const steps = getStudySteps(verb);
-  studyFormIdx++;
-  if (studyFormIdx >= steps.length) {
-    studyFormIdx = 0;
-    studyVerbIdx++;
-    if (studyVerbIdx >= studyVerbs.length) {
-      studyVerbIdx = 0; // loop
-    }
-    renderStudyVerbNav();
-  }
-  renderStudyCard();
-}
-
-function toggleStudyAuto() {
-  studyAutoRunning = !studyAutoRunning;
-  const btn = document.getElementById('study-auto-btn');
-  if (studyAutoRunning) {
-    btn.textContent = '⏸ Пауза';
-    btn.style.background = 'var(--accent)';
-    btn.style.color = '#0e0e10';
-    runStudyAuto();
-  } else {
-    btn.textContent = '⏵ Авто-режим';
-    btn.style.background = '';
-    btn.style.color = '';
-    if (studyAutoTimer) { clearTimeout(studyAutoTimer); studyAutoTimer = null; }
-  }
-}
-
-function runStudyAuto() {
-  if (!studyAutoRunning) return;
-  const delay = parseInt(document.getElementById('study-speed').value) || 3000;
-  studyAutoTimer = setTimeout(() => {
-    studyNext();
-    runStudyAuto();
-  }, delay);
-}
-
-function startTrainerFromStudy() {
-  // Launch trainer with same verb selection
-  if (studySelectedIds.size > 0) {
-    selectedVerbIds = new Set(studySelectedIds);
-    const n = selectedVerbIds.size;
-    const banner = document.getElementById('custom-selection-banner');
-    banner.style.display = 'flex';
-    document.getElementById('custom-selection-label').textContent =
-      `📋 Тренировка: ${n} глагол${n===1?'':n<5?'а':'ов'} выбрано`;
-  } else if (studyVerbs.length === 1) {
-    // Single verb from studyOneVerb
-    selectedVerbIds = new Set([studyVerbs[0].id]);
-    const banner = document.getElementById('custom-selection-banner');
-    banner.style.display = 'flex';
-    document.getElementById('custom-selection-label').textContent =
-      `📋 Тренировка: ${studyVerbs[0].inf}`;
-  } else {
-    selectedVerbIds.clear();
-    document.getElementById('custom-selection-banner').style.display = 'none';
-    // Apply group filter
-    document.getElementById('filter-group').value =
-      document.getElementById('study-group').value;
-  }
-  // Apply tense filter
-  const st = document.getElementById('study-tense').value;
-  document.getElementById('filter-tense').value = st === 'all' ? 'all' : st;
-  stopStudySession();
-  showScreen('trainer');
-  resetTrainer();
-}
-
-// Study verb picker (reuses same UI as trainer picker)
-let studyPickerOpen = false;
-function openStudyVerbPicker() {
-  studyPickerOpen = true;
-  // Temporarily swap selectedVerbIds with studySelectedIds
-  const saved = selectedVerbIds;
-  selectedVerbIds = studySelectedIds;
-  openVerbPicker();
-  // Override apply button
-  const applyBtn = document.querySelector('#verb-picker-modal .btn-primary');
-  if (applyBtn) {
-    applyBtn.textContent = 'Применить →';
-    applyBtn.onclick = () => {
-      studySelectedIds = new Set(selectedVerbIds);
-      selectedVerbIds = saved;
-      closeVerbPicker();
-      const n = studySelectedIds.size;
-      const banner = document.getElementById('study-selection-banner');
-      banner.style.display = n > 0 ? 'flex' : 'none';
-      if (n > 0) document.getElementById('study-selection-label').textContent =
-        `📋 Выбрано: ${n} глагол${n===1?'':n<5?'а':'ов'}`;
-      renderStudyScreen();
-    };
-  }
-}
-
-function clearStudySelection() {
-  studySelectedIds.clear();
-  document.getElementById('study-selection-banner').style.display = 'none';
-  renderStudyScreen();
-}
 // ════════════════════════════════════════════════
 // PHRASES TRAINER
 // ════════════════════════════════════════════════
