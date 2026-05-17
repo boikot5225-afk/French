@@ -2147,6 +2147,12 @@ input:-webkit-autofill:focus {
       <button class="btn btn-primary" onclick="checkLearnAnswer()" style="padding:11px 16px">Проверить</button>
     </div>
     <div id="check-feedback" style="min-height:40px;"></div>
+
+    <!-- AZERTY keyboard for learn -->
+    <div id="fr-kb-learn" style="display:none;margin-top:8px;"></div>
+    <div style="text-align:right;margin-top:6px;">
+      <button class="kb-toggle-btn" onclick="toggleFrKb('learn')" id="learn-kb-toggle-btn">⌨ Своя клавиатура</button>
+    </div>
   </div>
 
   <!-- Step 4: Result -->
@@ -8245,7 +8251,7 @@ const ACCENTS = {
   a:['à','â','ä'], e:['é','è','ê','ë'], i:['î','ï'], o:['ô','œ'], u:['ù','û','ü'], c:['ç'],
   A:['À','Â','Ä'], E:['É','È','Ê','Ë'], I:['Î','Ï'], O:['Ô','Œ'], U:['Ù','Û','Ü'], C:['Ç'],
 };
-const KB_INPUT_MAP = { main:'answer-input', grp:'ganswer-input', ph:'ph-input', num:'num-input' };
+const KB_INPUT_MAP = { main:'answer-input', grp:'ganswer-input', ph:'ph-input', num:'num-input', learn:'check-input' };
 let frKbShift=false, frKbActiveId=null, frKbBlurTimer=null, frLongPressTimer=null, frAccentPopup=null;
 let frTouchTarget=null, frTouchMoved=false;
 
@@ -8377,17 +8383,32 @@ function showFrKb(kbId) {
   buildFrKb(kbId);
   const kb = document.getElementById('fr-kb-' + kbId);
   if (kb) { kb.style.display = 'block'; }
-  // Compact mode for trainer
-  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers'}[kbId];
+  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers', learn:'study'}[kbId];
   if (screenId) document.getElementById('screen-' + screenId)?.classList.add('kb-active');
 }
 
 function hideFrKb(kbId) {
   const kb = document.getElementById('fr-kb-' + kbId);
   if (kb) kb.style.display = 'none';
-  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers'}[kbId];
+  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers', learn:'study'}[kbId];
   if (screenId) document.getElementById('screen-' + screenId)?.classList.remove('kb-active');
   frKbActiveId = null;
+}
+
+function toggleFrKb(kbId) {
+  const kb = document.getElementById('fr-kb-' + kbId);
+  if (!kb) return;
+  if (kb.style.display === 'none' || !kb.style.display) {
+    frKbEnabled = true;
+    showFrKb(kbId);
+    const inp = document.getElementById(KB_INPUT_MAP[kbId]);
+    if (inp) { inp.setAttribute('inputmode','none'); inp.focus(); }
+  } else {
+    hideFrKb(kbId);
+    frKbEnabled = false;
+    const inp = document.getElementById(KB_INPUT_MAP[kbId]);
+    if (inp) { inp.removeAttribute('inputmode'); inp.focus(); }
+  }
 }
 // ════════════════════════════════════════════════
 const BN_MAP = {
@@ -10908,6 +10929,7 @@ function showLearnCheckForm() {
     `Шаг 2 из 2 — проверка (${learnCheckPos + 1} / ${learnCheckQueue.length})`;
 
   showLearnView('study-check-view');
+  if (frKbEnabled) showFrKb('learn');
   setTimeout(() => document.getElementById('check-input')?.focus(), 100);
 }
 
@@ -10915,7 +10937,7 @@ function checkLearnAnswer() {
   const idx = learnCheckQueue[learnCheckPos];
   const input = document.getElementById('check-input')?.value.trim().toLowerCase();
   const correct = (learnVerb.conj?.present?.[idx] || '').toLowerCase();
-  const isCorrect = input === correct;
+  const isCorrect = normalize(input) === normalize(correct);
   const fb = document.getElementById('check-feedback');
 
   if (isCorrect) {
