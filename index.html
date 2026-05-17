@@ -2148,11 +2148,10 @@ input:-webkit-autofill:focus {
     </div>
     <div id="check-feedback" style="min-height:40px;"></div>
 
-    <!-- AZERTY keyboard for learn -->
-    <div id="fr-kb-learn" style="display:none;margin-top:8px;"></div>
-    <div style="text-align:right;margin-top:6px;">
-      <button class="kb-toggle-btn" onclick="toggleFrKb('learn')" id="learn-kb-toggle-btn">⌨ Своя клавиатура</button>
+    <div style="text-align:right;margin-top:4px">
+      <button class="kb-toggle-btn" id="kb-toggle-learn" onclick="toggleKbMode('learn')">⌨ Своя клавиатура</button>
     </div>
+    <div class="fr-keyboard" id="fr-kb-learn"></div>
   </div>
 
   <!-- Step 4: Result -->
@@ -8644,8 +8643,7 @@ function toggleKbMode(kbId) {
   if (frKbEnabled) {
     showFrKb(kbId);
   } else {
-    // Hide all keyboards
-    ['main','grp','ph','num'].forEach(id => hideFrKb(id));
+    ['main','grp','ph','num','learn'].forEach(id => hideFrKb(id));
     const inp = document.getElementById(KB_INPUT_MAP[kbId]);
     if (inp) { inp.inputMode = 'text'; inp.focus(); }
   }
@@ -9441,8 +9439,16 @@ function setGrammar(key) {
 // HOME
 // ════════════════════════════════════════════════
 async function renderHome() {
-  const stats = loadStats();
   const srs = loadSRS();
+
+  // Read stats from Supabase if logged in
+  let stats = {};
+  if (sbUser) {
+    const data = await sbLoadStats();
+    if (data) stats = data;
+  } else {
+    stats = loadStats();
+  }
 
   // Read meta from Supabase if logged in
   let meta = {};
@@ -9450,7 +9456,6 @@ async function renderHome() {
     const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).single().catch(() => ({ data: null }));
     if (data) {
       meta = { streak: data.streak, bestStreak: data.best_streak, lastActive: data.last_active };
-      localStorage.setItem(profileKey('meta'), JSON.stringify(meta));
     }
   } else {
     meta = loadMeta();
@@ -9521,14 +9526,29 @@ const TENSE_NAMES = {present:'Présent',passe:'Passé composé',imparfait:'Impar
 const GROUP_LABELS = {er:'-ER',ir:'-IR',re:'-RE',irr:'Irrégulier',ref:'Réfléchi'};
 const BADGE_CLASS = {er:'badge-er',ir:'badge-ir',re:'badge-re',irr:'badge-irr',ref:'badge-ref'};
 
-function startSRSReview() {
-  // Filter trainer to SRS due verbs only
-  selectedVerbIds = new Set(
-    VERBS.filter(v => {
-      const card = loadSRS()[v.id];
+async function startSRSReview() {
+  let dueVerbs = [];
+  if (sbUser) {
+    const { data } = await sb.from('srs')
+      .select('verb_id')
+      .eq('user_id', sbUser.id)
+      .lte('due_date', todayStr())
+      .catch(() => ({ data: [] }));
+    dueVerbs = (data || []).map(r => r.verb_id);
+  } else {
+    const srs = loadSRS();
+    dueVerbs = VERBS.filter(v => {
+      const card = srs[v.id];
       return card && card.dueDate <= todayStr();
-    }).map(v => v.id)
-  );
+    }).map(v => v.id);
+  }
+
+  if (!dueVerbs.length) {
+    alert('Нет глаголов для повторения сегодня!');
+    return;
+  }
+
+  selectedVerbIds = new Set(dueVerbs);
   const n = selectedVerbIds.size;
   const banner = document.getElementById('custom-selection-banner');
   banner.style.display = 'flex';
@@ -10930,6 +10950,7 @@ function showLearnCheckForm() {
 
   showLearnView('study-check-view');
   if (frKbEnabled) showFrKb('learn');
+  else hideFrKb('learn');
   setTimeout(() => document.getElementById('check-input')?.focus(), 100);
 }
 
