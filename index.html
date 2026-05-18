@@ -10315,13 +10315,21 @@ function verbStatRow(v) {
   </div>`;
 }
 
-function confirmReset() {
-  if (confirm('Сбросить всю статистику? Это действие нельзя отменить.')) {
-    localStorage.removeItem('conjStats');
-    localStorage.removeItem('conjMeta');
-    renderStats();
-    renderHome();
+async function confirmReset() {
+  if (!confirm('Сбросить всю статистику? Это действие нельзя отменить.')) return;
+
+  // Clear localStorage
+  localStorage.removeItem(profileKey('stats'));
+  localStorage.removeItem(profileKey('meta'));
+
+  // Clear Supabase
+  if (sbUser) {
+    await sb.from('stats').delete().eq('user_id', sbUser.id);
+    await sb.from('meta').delete().eq('user_id', sbUser.id);
   }
+
+  renderStats();
+  renderHome();
 }
 
 // ════════════════════════════════════════════════
