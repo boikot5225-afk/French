@@ -2402,7 +2402,7 @@ sb.auth.getSession().then(async ({ data }) => {
     sbUser = data.session.user;
     try {
       const [profile, , cloudStats, cloudSRS, cloudMeta] = await Promise.all([
-        sbGetProfile(), loadVerbsFromCloud(), sbLoadStats(), sbLoadSRS(), sbLoadMeta()
+        sbGetProfile(), loadVerbsFromCloud(), loadPhrasesFromCloud(), sbLoadStats(), sbLoadSRS(), sbLoadMeta()
       ]);
       if (profile) {
         currentProfile = profile.username;
@@ -8235,6 +8235,7 @@ const PRONOUNS = ['je','tu','il','nous','vous','ils'];
 
 let VERBS = []; // Loaded from Supabase
 let VERBS_LOADED = false;
+let PHRASES_LOADED = false;
 
 async function loadVerbsFromCloud() {
   if (VERBS_LOADED) return;
@@ -8257,6 +8258,24 @@ async function loadVerbsFromCloud() {
     console.log('Loaded ' + VERBS.length + ' verbs from Supabase');
   } catch(e) {
     console.error('Failed to load verbs from Supabase:', e.message);
+  }
+}
+
+async function loadPhrasesFromCloud() {
+  if (PHRASES_LOADED) return;
+  try {
+    const { data, error } = await sb.from('phrases').select('*');
+    if (error) throw error;
+    PHRASES.length = 0;
+    data.forEach(p => PHRASES.push({
+      id: p.id, verbId: p.verb_id,
+      tense: p.tense, fr: p.fr,
+      answer: p.answer, ru: p.ru
+    }));
+    PHRASES_LOADED = true;
+    console.log('Loaded ' + PHRASES.length + ' phrases from Supabase');
+  } catch(e) {
+    console.error('Failed to load phrases:', e.message);
   }
 }
 
@@ -8557,7 +8576,7 @@ async function doLogin() {
 
     // Load verbs + cloud data in parallel
     const [_, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
-      loadVerbsFromCloud(), sbLoadStats(), sbLoadSRS(), sbLoadMeta()
+      loadVerbsFromCloud(), loadPhrasesFromCloud(), sbLoadStats(), sbLoadSRS(), sbLoadMeta()
     ]);
 
     // Merge cloud stats with local - take the one with more attempts
@@ -9496,10 +9515,10 @@ async function renderHome() {
   // Read meta from Supabase if logged in
   let meta = {};
   if (sbUser) {
-    const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).single().catch(() => ({ data: null }));
-    if (data) {
-      meta = { streak: data.streak, bestStreak: data.best_streak, lastActive: data.last_active };
-    }
+    try {
+      const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).single();
+      if (data) meta = { streak: data.streak, bestStreak: data.best_streak, lastActive: data.last_active };
+    } catch(e) {}
   } else {
     meta = loadMeta();
   }
@@ -10015,9 +10034,12 @@ async function updateSRS(verbId, correct) {
   const grade = correct ? 4 : 1;
 
   // Load current card from Supabase
-  const { data } = await sb.from('srs').select('*').eq('user_id', sbUser.id).eq('verb_id', verbId).single().catch(() => ({ data: null }));
-
-  const card = data ? {
+  let srsData = null;
+  try {
+    const { data } = await sb.from('srs').select('*').eq('user_id', sbUser.id).eq('verb_id', verbId).single();
+    srsData = data;
+  } catch(e) {}
+  const card = srsData ? {
     interval: data.interval,
     easeFactor: data.ease_factor,
     repetitions: data.repetitions,
@@ -10796,6 +10818,7 @@ let learnCheckPronounIdx = 0;
 
 async function renderStudyScreen() {
   if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
+  if (!PHRASES_LOADED && sbUser) await loadPhrasesFromCloud();
   const srs = loadSRS();
   const group = document.getElementById('study-group-filter')?.value || 'all';
   const search = document.getElementById('study-search')?.value.trim().toLowerCase() || '';
