@@ -1600,7 +1600,7 @@ input:-webkit-autofill:focus {
   </div>
 
   <!-- Custom selection banner -->
-  <div id="custom-selection-banner" style="display:none;background:var(--ir-dim);border:1px solid var(--ir);border-radius:8px;padding:10px 18px;font-size:0.82rem;color:var(--ir);margin-bottom:20px;display:none;align-items:center;justify-content:space-between;">
+  <div id="custom-selection-banner" style="display:none;background:var(--ir-dim);border:1px solid var(--ir);border-radius:8px;padding:10px 18px;font-size:0.82rem;color:var(--ir);margin-bottom:20px;align-items:center;justify-content:space-between;">
     <span id="custom-selection-label">Выбрано: 0 глаголов</span>
     <button onclick="clearVerbSelection()" style="background:none;border:1px solid var(--ir);border-radius:6px;padding:4px 12px;color:var(--ir);cursor:pointer;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;margin-left:16px">✕ Сбросить</button>
   </div>
@@ -2392,7 +2392,7 @@ async function sbSaveMeta(meta) {
 
 async function sbLoadMeta() {
   if (!sbUser) return null;
-  const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).single();
+  const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).maybeSingle();
   return data;
 }
 
@@ -9516,7 +9516,7 @@ async function renderHome() {
   let meta = {};
   if (sbUser) {
     try {
-      const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).single();
+      const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).maybeSingle();
       if (data) meta = { streak: data.streak, bestStreak: data.best_streak, lastActive: data.last_active };
     } catch(e) {}
   } else {
@@ -9613,12 +9613,14 @@ async function startSRSReview() {
 
   selectedVerbIds = new Set(dueVerbs);
   const n = selectedVerbIds.size;
-  const banner = document.getElementById('custom-selection-banner');
-  banner.style.display = 'flex';
-  document.getElementById('custom-selection-label').textContent =
-    `📅 Повторение по расписанию: ${n} глагол${n===1?'':n<5?'а':'ов'}`;
   showScreen('trainer');
   setTrainerMode('verbs');
+  const banner = document.getElementById('custom-selection-banner');
+  if (banner) {
+    banner.style.display = 'flex';
+    document.getElementById('custom-selection-label').textContent =
+      `📅 Повторение по расписанию: ${n} глагол${n===1?'':n<5?'а':'ов'}`;
+  }
   resetTrainer();
 }
 
