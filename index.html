@@ -10054,10 +10054,10 @@ async function updateSRS(verbId, correct) {
     srsData = data;
   } catch(e) {}
   const card = srsData ? {
-    interval: data.interval,
-    easeFactor: data.ease_factor,
-    repetitions: data.repetitions,
-    dueDate: data.due_date
+    interval: srsData.interval,
+    easeFactor: srsData.ease_factor,
+    repetitions: srsData.repetitions,
+    dueDate: srsData.due_date
   } : null;
 
   const updated = sm2Update(card, grade);
