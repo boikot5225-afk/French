@@ -951,23 +951,7 @@ input:-webkit-autofill:focus {
       <div id="auth-success" style="display:none;margin-top:14px;padding:10px 14px;background:#1a3a28;border:1px solid var(--good);border-radius:8px;font-size:0.82rem;color:var(--good);"></div>
     </div>
 
-    <!-- Local profile fallback -->
-    <div style="margin-top:20px;text-align:center;">
-      <button onclick="showLocalProfiles()" style="background:none;border:none;color:var(--text-dim);font-size:0.78rem;cursor:pointer;text-decoration:underline">
-        Войти без регистрации (локально)
-      </button>
-    </div>
-    <div id="local-profiles-section" style="display:none;margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
-      <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:12px">Локальные профили</div>
-      <div id="profile-list" style="margin-bottom:16px;"></div>
-      <div style="display:flex;gap:10px;">
-        <input id="new-profile-input" placeholder="Твоё имя" maxlength="24"
-          onkeydown="if(event.key==='Enter')createProfile()"
-          style="flex:1;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
-          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-        <button class="btn btn-primary" onclick="createProfile()" style="white-space:nowrap">Войти</button>
-      </div>
-    </div>
+    <!-- Local profile option removed - use Supabase auth only -->
   </div>
 </div>
 
@@ -9228,8 +9212,9 @@ function logoutProfile() {
 }
 
 function renderProfileScreen() {
-  const list = getProfiles();
   const profilesEl = document.getElementById('profile-list');
+  if (!profilesEl) return; // element removed - local profiles disabled
+  const list = getProfiles();
   if (list.length === 0) {
     profilesEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:12px 0">Профилей пока нет — создай первый</div>';
   } else {
@@ -9307,28 +9292,8 @@ function showProfileManage() {
     return;
   }
 
-  // Local login — show local profiles
-  let modal = document.getElementById('profile-manage-modal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'profile-manage-modal';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);';
-    modal.innerHTML = `
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;max-width:440px;width:90%;max-height:80vh;overflow-y:auto;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-          <div style="font-family:'Playfair Display',serif;font-size:1.3rem">👤 Профили</div>
-          <button onclick="document.getElementById('profile-manage-modal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer">×</button>
-        </div>
-        <div id="profile-manage-list"></div>
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;">
-          <input id="profile-manage-input" type="text" placeholder="Новый профиль..." class="answer-input" style="flex:1;padding:8px 12px;font-size:0.9rem">
-          <button class="btn btn-primary" onclick="createProfileFromManage()">Создать</button>
-        </div>
-      </div>`;
-    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-    document.body.appendChild(modal);
-  }
-  refreshProfileManageList();
+  // Not logged in via Supabase
+  alert('Войдите через email чтобы управлять профилем.');
 }
 
 async function changeUsername() {
