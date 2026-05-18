@@ -883,6 +883,19 @@ input:-webkit-autofill:focus {
 <body>
 
 <!-- PROFILE SCREEN -->
+<!-- Loading spinner -->
+<div id="loading-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div style="width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <div id="loading-text" style="font-size:0.85rem;color:var(--text-muted)">Загружаем данные...</div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9998;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-size:0.82rem;color:var(--text);box-shadow:0 4px 20px rgba(0,0,0,0.4);white-space:nowrap;"></div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
 <div id="screen-profile" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg);">
   <div style="width:100%;max-width:400px;">
     <div style="text-align:center;margin-bottom:36px;">
@@ -1015,6 +1028,15 @@ input:-webkit-autofill:focus {
       <button onclick="setTTSEngine('webspeech')" class="tts-engine-btn" data-engine="webspeech">Браузер</button>
     </div>
     <div style="font-size:0.68rem;color:var(--text-dim);margin-top:8px">Если слышите английский — попробуйте Google TTS</div>
+
+    <!-- Auto speak toggle -->
+    <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:0.82rem;color:var(--text-muted)">🔊 Авто-озвучка при изучении</div>
+      <button id="auto-speak-btn" onclick="toggleAutoSpeak()"
+        style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:${autoSpeak?'var(--accent)':'var(--surface2)'};color:${autoSpeak?'#0e0e10':'var(--text-muted)'};font-size:0.78rem;cursor:pointer">
+        ${autoSpeak ? 'Вкл' : 'Выкл'}
+      </button>
+    </div>
 
     <!-- Install instructions -->
     <div style="margin-top:12px;">
@@ -2068,9 +2090,19 @@ input:-webkit-autofill:focus {
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
       <button class="btn btn-primary" onclick="startLearnSession()" style="flex:1;padding:11px;font-size:0.9rem">▶ Изучить следующий</button>
       <button onclick="toggleSelectMode()" id="select-mode-btn" class="btn btn-secondary" style="padding:11px 14px;font-size:0.8rem;white-space:nowrap">☑ Выбрать</button>
+    </div>
+
+    <!-- Phrase count selector -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="font-size:0.75rem;color:var(--text-muted)">Фраз на глагол:</div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="setPhraseCount(1)" id="pc-btn-1" class="btn btn-secondary" style="padding:4px 12px;font-size:0.82rem">1</button>
+        <button onclick="setPhraseCount(3)" id="pc-btn-3" class="btn btn-secondary" style="padding:4px 12px;font-size:0.82rem">3</button>
+        <button onclick="setPhraseCount(5)" id="pc-btn-5" class="btn btn-secondary" style="padding:4px 12px;font-size:0.82rem">5</button>
+      </div>
     </div>
 
     <!-- New verbs list -->
@@ -2135,8 +2167,9 @@ input:-webkit-autofill:focus {
     </div>
     <div id="check-feedback" style="min-height:40px;"></div>
 
-    <div style="text-align:right;margin-top:4px">
-      <button class="kb-toggle-btn" id="kb-toggle-learn" onclick="toggleKbMode('learn')">⌨ Своя клавиатура</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+      <div id="learn-kb-indicator" style="font-size:0.72rem;color:var(--text-dim);display:none">⌨ французская клавиатура активна</div>
+      <button class="kb-toggle-btn" id="kb-toggle-learn" onclick="toggleKbMode('learn')" style="margin-left:auto">⌨ Своя клавиатура</button>
     </div>
     <div class="fr-keyboard" id="fr-kb-learn"></div>
   </div>
@@ -2162,8 +2195,9 @@ input:-webkit-autofill:focus {
       <button class="btn btn-primary" onclick="checkPhraseAnswer()" style="padding:11px 16px">Проверить</button>
     </div>
     <div id="phrase-feedback" style="min-height:40px;"></div>
-    <div style="text-align:right;margin-top:4px">
-      <button class="kb-toggle-btn" id="kb-toggle-phrase-learn" onclick="toggleKbMode('phrase-learn')">⌨ Своя клавиатура</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+      <div id="phrase-kb-indicator" style="font-size:0.72rem;color:var(--text-dim);display:none">⌨ французская клавиатура активна</div>
+      <button class="kb-toggle-btn" id="kb-toggle-phrase-learn" onclick="toggleKbMode('phrase-learn')" style="margin-left:auto">⌨ Своя клавиатура</button>
     </div>
     <div class="fr-keyboard" id="fr-kb-phrase-learn"></div>
   </div>
@@ -8242,6 +8276,7 @@ async function loadVerbsFromCloud() {
     console.log('Loaded ' + VERBS.length + ' verbs from Supabase');
   } catch(e) {
     console.error('Failed to load verbs from Supabase:', e.message);
+    showToast('⚠️ Не удалось загрузить глаголы. Проверьте соединение.');
   }
 }
 
@@ -8260,6 +8295,7 @@ async function loadPhrasesFromCloud() {
     console.log('Loaded ' + PHRASES.length + ' phrases from Supabase');
   } catch(e) {
     console.error('Failed to load phrases:', e.message);
+    showToast('⚠️ Не удалось загрузить фразы. Проверьте соединение.');
   }
 }
 
@@ -8414,13 +8450,18 @@ function showFrKb(kbId) {
   buildFrKb(kbId);
   const kb = document.getElementById('fr-kb-' + kbId);
   if (kb) kb.style.display = 'block';
-  // Prevent Android keyboard from appearing
   const inp = document.getElementById(KB_INPUT_MAP[kbId]);
   if (inp) {
     inp.setAttribute('inputmode', 'none');
     inp.setAttribute('readonly', 'readonly');
   }
-  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers', learn:'study'}[kbId];
+  // Show indicator
+  const indicatorMap = {'learn':'learn-kb-indicator', 'phrase-learn':'phrase-kb-indicator'};
+  if (indicatorMap[kbId]) {
+    const ind = document.getElementById(indicatorMap[kbId]);
+    if (ind) ind.style.display = 'block';
+  }
+  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers', learn:'study', 'phrase-learn':'study'}[kbId];
   if (screenId) document.getElementById('screen-' + screenId)?.classList.add('kb-active');
 }
 
@@ -8432,7 +8473,13 @@ function hideFrKb(kbId) {
     inp.removeAttribute('readonly');
     inp.setAttribute('inputmode', 'text');
   }
-  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers', learn:'study'}[kbId];
+  // Hide indicator
+  const indicatorMap = {'learn':'learn-kb-indicator', 'phrase-learn':'phrase-kb-indicator'};
+  if (indicatorMap[kbId]) {
+    const ind = document.getElementById(indicatorMap[kbId]);
+    if (ind) ind.style.display = 'none';
+  }
+  const screenId = {main:'trainer', grp:'groups', ph:'phrases', num:'numbers', learn:'study', 'phrase-learn':'study'}[kbId];
   if (screenId) document.getElementById('screen-' + screenId)?.classList.remove('kb-active');
   frKbActiveId = null;
 }
@@ -8509,6 +8556,58 @@ async function renderLeaderboard() {
     console.error(e);
   }
 }
+// ── Background sync every 5 minutes ──
+let bgSyncInterval = null;
+
+function startBackgroundSync() {
+  if (bgSyncInterval) clearInterval(bgSyncInterval);
+  bgSyncInterval = setInterval(async () => {
+    if (!sbUser) return;
+    try {
+      await syncStatsFromCloud();
+      const { data } = await sb.from('srs').select('*').eq('user_id', sbUser.id);
+      if (data && data.length) {
+        const srs = {};
+        data.forEach(r => {
+          srs[r.verb_id] = {
+            interval: r.interval, easeFactor: r.ease_factor,
+            repetitions: r.repetitions, dueDate: r.due_date,
+            lastReview: r.last_review, markedKnown: r.marked_known,
+            stage: r.stage
+          };
+        });
+        localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
+      }
+    } catch(e) {}
+  }, 5 * 60 * 1000);
+}
+
+function stopBackgroundSync() {
+  if (bgSyncInterval) { clearInterval(bgSyncInterval); bgSyncInterval = null; }
+}
+
+function showLoading(text = 'Загружаем данные...') {
+  const el = document.getElementById('loading-overlay');
+  const txt = document.getElementById('loading-text');
+  if (el) { el.style.display = 'flex'; }
+  if (txt) txt.textContent = text;
+}
+
+function hideLoading() {
+  const el = document.getElementById('loading-overlay');
+  if (el) el.style.display = 'none';
+}
+
+let toastTimer = null;
+function showToast(msg, duration = 3000) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, duration);
+}
+
 function switchAuthTab(tab) {
   const isLogin = tab === 'login';
   document.getElementById('auth-form-login').style.display = isLogin ? 'block' : 'none';
@@ -8548,6 +8647,7 @@ async function doLogin() {
   try {
     const user = await sbSignIn(email, password);
     btn.textContent = '⏳ Загружаем данные...';
+    showLoading('Загружаем глаголы и фразы...');
 
     let profile = await sbGetProfile();
     if (!profile) {
@@ -8595,7 +8695,9 @@ async function doLogin() {
       localStorage.setItem('conj_' + profile.username + '_meta', JSON.stringify(cloudMeta));
 
     loginProfile(profile.username);
+    hideLoading();
   } catch(e) {
+    hideLoading();
     console.error('Login error:', e);
     showAuthError(e.message === 'Invalid login credentials' ? 'Неверный email или пароль' : e.message);
     btn.textContent = 'Войти'; btn.disabled = false;
@@ -8662,6 +8764,8 @@ function initTTSEngineUI() {
   });
 }
 let frKbEnabled = localStorage.getItem('frKbEnabled') !== '0';
+let autoSpeak = localStorage.getItem('autoSpeak') === '1';
+let learnPhraseCount = parseInt(localStorage.getItem('learnPhraseCount') || '3');
 
 function applyKbMode() {
   const inputs = ['answer-input','ganswer-input','ph-input','num-input'];
@@ -9191,7 +9295,7 @@ function loginProfile(name) {
   if (brand) brand.innerHTML = 'conjugaison <span style="font-size:0.65rem;opacity:0.6;font-style:normal;margin-left:6px">' + name + '</span>';
   document.getElementById('screen-profile').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
-
+  startBackgroundSync();
   resetTrainer();
   renderHome();
   setTimeout(() => renderHome(), 2000);
@@ -9199,6 +9303,7 @@ function loginProfile(name) {
 
 function logoutProfile() {
   if (sbUser) { sbSignOut(); sbUser = null; }
+  stopBackgroundSync();
   currentProfile = null;
   // Reset login button
   const btn = document.getElementById('login-btn');
@@ -10810,6 +10915,7 @@ let learnCheckPronounIdx = 0;
 async function renderStudyScreen() {
   if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
   if (!PHRASES_LOADED && sbUser) await loadPhrasesFromCloud();
+  initPhraseCountButtons();
   const srs = loadSRS();
   const group = document.getElementById('study-group-filter')?.value || 'all';
   const search = document.getElementById('study-search')?.value.trim().toLowerCase() || '';
@@ -10935,6 +11041,35 @@ function startLearnSession() {
   learnVerbStart(newVerbs[0].id);
 }
 
+function toggleAutoSpeak() {
+  autoSpeak = !autoSpeak;
+  localStorage.setItem('autoSpeak', autoSpeak ? '1' : '0');
+  const btn = document.getElementById('auto-speak-btn');
+  if (btn) {
+    btn.textContent = autoSpeak ? 'Вкл' : 'Выкл';
+    btn.style.background = autoSpeak ? 'var(--accent)' : 'var(--surface2)';
+    btn.style.color = autoSpeak ? '#0e0e10' : 'var(--text-muted)';
+  }
+}
+
+function setPhraseCount(n) {
+  learnPhraseCount = n;
+  localStorage.setItem('learnPhraseCount', n);
+  // Update button styles
+  [1,3,5].forEach(i => {
+    const btn = document.getElementById('pc-btn-' + i);
+    if (btn) {
+      btn.style.background = i === n ? 'var(--accent)' : '';
+      btn.style.color = i === n ? '#0e0e10' : '';
+      btn.style.borderColor = i === n ? 'var(--accent)' : '';
+    }
+  });
+}
+
+function initPhraseCountButtons() {
+  setPhraseCount(learnPhraseCount);
+}
+
 function toggleKnownList() {
   const el = document.getElementById('study-known-list');
   const icon = document.getElementById('known-toggle-icon');
@@ -10972,7 +11107,7 @@ function renderLearnCard() {
 
   const ex = document.getElementById('learn-example');
   if (ex) ex.textContent = v.ex?.present || '';
-  speak(v.inf);
+  if (autoSpeak) setTimeout(() => speak(v.inf), 300);
 }
 
 function learnAgain() { renderLearnCard(); }
@@ -11008,7 +11143,11 @@ function showLearnCheckForm() {
   showLearnView('study-check-view');
   if (frKbEnabled) showFrKb('learn');
   else hideFrKb('learn');
-  setTimeout(() => document.getElementById('check-input')?.focus(), 100);
+  const checkInp = document.getElementById('check-input');
+  if (checkInp) {
+    if (!frKbEnabled) { checkInp.removeAttribute('readonly'); }
+    setTimeout(() => checkInp.focus(), 150);
+  }
 }
 
 function checkLearnAnswer() {
@@ -11020,13 +11159,19 @@ function checkLearnAnswer() {
 
   if (isCorrect) {
     speak(correct);
+    // Show example if available
+    const pronouns = ['je','tu','il/elle','nous','vous','ils/elles'];
+    const pronoun = pronouns[idx];
+    const example = learnVerb.ex?.present || '';
+    const exampleHtml = example
+      ? `<div style="font-size:0.8rem;color:var(--text-dim);font-style:italic;margin-top:8px;padding:8px 12px;background:var(--surface2);border-radius:6px">${example}</div>`
+      : '';
+    fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:6px">✓ ${pronoun} <strong>${correct}</strong></div>${exampleHtml}`;
     learnCheckPos++;
     if (learnCheckPos >= learnCheckQueue.length) {
-      // All 6 forms done — go to phrases
-      startPhrasesStep();
+      setTimeout(() => startPhrasesStep(), exampleHtml ? 1200 : 600);
     } else {
-      fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:8px">✓ Правильно!</div>`;
-      setTimeout(() => showLearnCheckForm(), 600);
+      setTimeout(() => showLearnCheckForm(), exampleHtml ? 1200 : 600);
     }
   } else {
     learnCheckErrors++;
@@ -11051,7 +11196,7 @@ function startPhrasesStep() {
     return;
   }
   // Pick up to 3 random phrases
-  learnPhraseQueue = verbPhrases.sort(() => Math.random() - 0.5).slice(0, 3);
+  learnPhraseQueue = verbPhrases.sort(() => Math.random() - 0.5).slice(0, learnPhraseCount);
   learnPhraseIdx = 0;
   learnPhraseErrors = 0;
   showPhraseForm();
@@ -11067,7 +11212,12 @@ function showPhraseForm() {
   document.getElementById('phrase-feedback').innerHTML = '';
   showLearnView('study-phrases-view');
   if (frKbEnabled) showFrKb('phrase-learn');
-  setTimeout(() => document.getElementById('phrase-input')?.focus(), 100);
+  else hideFrKb('phrase-learn');
+  const phraseInp = document.getElementById('phrase-input');
+  if (phraseInp) {
+    if (!frKbEnabled) { phraseInp.removeAttribute('readonly'); }
+    setTimeout(() => phraseInp.focus(), 150);
+  }
 }
 
 function checkPhraseAnswer() {
@@ -11087,26 +11237,29 @@ function checkPhraseAnswer() {
     }
   } else {
     learnPhraseErrors++;
-    fb.innerHTML = `<div class="feedback-msg wrong" style="margin-bottom:10px">✗ Правильно: <strong>${phrase.answer}</strong></div>
-      <button class="btn btn-primary" onclick="learnPhraseIdx++;learnPhraseIdx>=learnPhraseQueue.length?finishLearn():showPhraseForm()" style="width:100%;padding:10px">Понял, дальше →</button>`;
     speak(phrase.fr.replace('___', phrase.answer));
+    // Push phrase back to end of queue
+    learnPhraseQueue.push(phrase);
+    fb.innerHTML = `<div class="feedback-msg wrong" style="margin-bottom:10px">✗ Правильно: <strong>${phrase.answer}</strong></div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px">Эта фраза вернётся в конец очереди</div>
+      <button class="btn btn-primary" onclick="learnPhraseIdx++;learnPhraseIdx>=learnPhraseQueue.length?finishLearn():showPhraseForm()" style="width:100%;padding:10px">Понял, дальше →</button>`;
   }
 }
 
 async function finishLearn() {
   const interval = (learnCheckErrors === 0 && learnPhraseErrors === 0) ? 2 : 1;
 
-  // Record in stats
+  // Record in stats - accumulate, don't overwrite
   const totalAttempts = 6 + learnCheckErrors;
   const correctAttempts = 6;
-  // Update localStorage cache immediately
   const stats = loadStats();
-  stats[learnVerb.id] = { total: totalAttempts, correct: correctAttempts };
+  if (!stats[learnVerb.id]) stats[learnVerb.id] = { total: 0, correct: 0 };
+  stats[learnVerb.id].total += totalAttempts;
+  stats[learnVerb.id].correct += correctAttempts;
   localStorage.setItem(profileKey('stats'), JSON.stringify(stats));
-  // Write to Supabase
   if (sbUser) {
     await sb.from('stats').upsert(
-      { user_id: sbUser.id, key: learnVerb.id, total: totalAttempts, correct: correctAttempts },
+      { user_id: sbUser.id, key: learnVerb.id, total: stats[learnVerb.id].total, correct: stats[learnVerb.id].correct },
       { onConflict: 'user_id,key' }
     );
   }
