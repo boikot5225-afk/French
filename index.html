@@ -8590,11 +8590,11 @@ async function doLogin() {
       });
       localStorage.setItem('conj_' + profile.username.toLowerCase() + '_stats', JSON.stringify(merged));
       // Push local-only data to cloud
-      sbSaveStats(merged).catch(()=>{});
+      sbSaveStats(merged);
     } else {
       // Cloud empty - push local to cloud
       const localStats = (() => { try { return JSON.parse(localStorage.getItem('conj_' + profile.username.toLowerCase() + '_stats') || '{}'); } catch { return {}; } })();
-      if (Object.keys(localStats).length) sbSaveStats(localStats).catch(()=>{});
+      if (Object.keys(localStats).length) sbSaveStats(localStats);
     }
 
     if (cloudSRS && Object.keys(cloudSRS).length) {
@@ -9180,7 +9180,7 @@ async function saveMeta(m) {
       streak: m.streak || 0,
       best_streak: m.bestStreak || 0,
       last_active: m.lastActive || todayStr()
-    }, { onConflict: 'user_id' }).catch(e => console.error('meta save error:', e));
+    }, { onConflict: 'user_id' }).then(({error}) => { if(error) console.error(error); });
   }
 }
 
@@ -9206,7 +9206,7 @@ function loginProfile(name) {
 }
 
 function logoutProfile() {
-  if (sbUser) { sbSignOut().catch(()=>{}); sbUser = null; }
+  if (sbUser) { sbSignOut(); sbUser = null; }
   currentProfile = null;
   // Reset login button
   const btn = document.getElementById('login-btn');
@@ -9353,7 +9353,7 @@ async function deleteAccount() {
   if (!confirm('Удалить аккаунт? Вся статистика будет потеряна навсегда.')) return;
   try {
     await sb.from('profiles').delete().eq('id', sbUser.id);
-    await sb.auth.admin?.deleteUser(sbUser.id).catch(()=>{});
+    await sb.auth.admin?.deleteUser(sbUser.id);
     document.getElementById('profile-manage-modal')?.remove();
     logoutProfile();
   } catch(e) {
@@ -10072,7 +10072,7 @@ async function updateSRS(verbId, correct) {
     due_date: updated.dueDate,
     last_review: updated.lastReview,
     marked_known: updated.markedKnown || false
-  }, { onConflict: 'user_id,verb_id' }).catch(e => console.error('SRS save error:', e));
+  }, { onConflict: 'user_id,verb_id' }).then(({error}) => { if(error) console.error(error); });
 
   // Update localStorage cache
   const srs = loadSRS();
@@ -10165,7 +10165,7 @@ async function recordResult(correct) {
     sb.from('stats').upsert(
       { user_id: sbUser.id, key, total: stats[key].total, correct: stats[key].correct },
       { onConflict: 'user_id,key' }
-    ).catch(e => console.error('stats save error:', e));
+    ).then(({error}) => { if(error) console.error(error); });
   }
 
   // SRS update
@@ -11159,7 +11159,7 @@ function finishLearn() {
       due_date: addDays(todayStr(), interval),
       last_review: todayStr(),
       stage: 'forms'
-    }, { onConflict: 'user_id,verb_id' }).catch(()=>{});
+    }, { onConflict: 'user_id,verb_id' });
   }
 
 }
