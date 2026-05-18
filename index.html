@@ -9159,6 +9159,14 @@ function loadStats() {
   try { return JSON.parse(localStorage.getItem(profileKey('stats')) || '{}'); } catch { return {}; }
 }
 
+async function syncStatsFromCloud() {
+  if (!sbUser) return;
+  try {
+    const data = await sbLoadStats();
+    if (data) localStorage.setItem(profileKey('stats'), JSON.stringify(data));
+  } catch(e) {}
+}
+
 async function saveStats(s) {
   if (!currentProfile) return;
   localStorage.setItem(profileKey('stats'), JSON.stringify(s));
@@ -9499,18 +9507,11 @@ function setGrammar(key) {
 async function renderHome() {
   const srs = loadSRS();
 
-  // Read stats from Supabase if logged in
-  let stats = {};
-  if (sbUser) {
-    const data = await sbLoadStats();
-    if (data) {
-      stats = data;
-      // Also update localStorage cache
-      localStorage.setItem(profileKey('stats'), JSON.stringify(stats));
-    }
-  } else {
-    stats = loadStats();
-  }
+  // Sync stats from Supabase to localStorage cache first
+  await syncStatsFromCloud();
+
+  // Read stats from cache
+  let stats = loadStats();
 
   // Read meta from Supabase if logged in
   let meta = {};
@@ -11130,18 +11131,19 @@ function checkPhraseAnswer() {
 function finishLearn() {
   const interval = (learnCheckErrors === 0 && learnPhraseErrors === 0) ? 2 : 1;
 
-  // Record in stats
-  const stats = loadStats();
-  if (!stats[learnVerb.id]) stats[learnVerb.id] = { total: 0, correct: 0 };
-  stats[learnVerb.id].total += learnCheckQueue.length;
-  stats[learnVerb.id].correct += learnCheckQueue.length - learnCheckErrors;
-  localStorage.setItem(profileKey('stats'), JSON.stringify(stats));
+  // Record in stats - use fixed count of 6 forms
+  const totalAttempts = 6 + learnCheckErrors;
+  const correctAttempts = 6;
   if (sbUser) {
     sb.from('stats').upsert(
-      { user_id: sbUser.id, key: learnVerb.id, total: stats[learnVerb.id].total, correct: stats[learnVerb.id].correct },
+      { user_id: sbUser.id, key: learnVerb.id, total: totalAttempts, correct: correctAttempts },
       { onConflict: 'user_id,key' }
     );
   }
+  // Update localStorage cache
+  const stats = loadStats();
+  stats[learnVerb.id] = { total: totalAttempts, correct: correctAttempts };
+  localStorage.setItem(profileKey('stats'), JSON.stringify(stats));
   const srs = loadSRS();
   srs[learnVerb.id] = {
     interval, easeFactor: 2.5,
