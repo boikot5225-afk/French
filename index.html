@@ -9180,7 +9180,7 @@ async function saveMeta(m) {
       streak: m.streak || 0,
       best_streak: m.bestStreak || 0,
       last_active: m.lastActive || todayStr()
-    }, { onConflict: 'user_id' }).then(({error}) => { if(error) console.error(error); });
+    }, { onConflict: 'user_id' });
   }
 }
 
@@ -10072,7 +10072,7 @@ async function updateSRS(verbId, correct) {
     due_date: updated.dueDate,
     last_review: updated.lastReview,
     marked_known: updated.markedKnown || false
-  }, { onConflict: 'user_id,verb_id' }).then(({error}) => { if(error) console.error(error); });
+  }, { onConflict: 'user_id,verb_id' });
 
   // Update localStorage cache
   const srs = loadSRS();
@@ -10165,7 +10165,7 @@ async function recordResult(correct) {
     sb.from('stats').upsert(
       { user_id: sbUser.id, key, total: stats[key].total, correct: stats[key].correct },
       { onConflict: 'user_id,key' }
-    ).then(({error}) => { if(error) console.error(error); });
+    );
   }
 
   // SRS update
