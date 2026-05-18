@@ -11159,19 +11159,32 @@ function checkLearnAnswer() {
 
   if (isCorrect) {
     speak(correct);
-    // Show example if available
-    const pronouns = ['je','tu','il/elle','nous','vous','ils/elles'];
-    const pronoun = pronouns[idx];
-    const example = learnVerb.ex?.present || '';
-    const exampleHtml = example
-      ? `<div style="font-size:0.8rem;color:var(--text-dim);font-style:italic;margin-top:8px;padding:8px 12px;background:var(--surface2);border-radius:6px">${example}</div>`
+    // Find a matching phrase for this exact form
+    const matchingPhrase = PHRASES.find(p =>
+      p.verbId === learnVerb.id &&
+      p.tense === 'present' &&
+      normalize(p.answer) === normalize(correct)
+    );
+    const exampleHtml = matchingPhrase
+      ? `<div style="font-size:0.82rem;color:var(--text-dim);font-style:italic;margin-top:10px;padding:10px 12px;background:var(--surface2);border-radius:8px;line-height:1.5">
+          ${matchingPhrase.fr.replace('___', `<strong style="color:var(--accent)">${correct}</strong>`)}
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">${matchingPhrase.ru}</div>
+         </div>`
       : '';
-    fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:6px">✓ ${pronoun} <strong>${correct}</strong></div>${exampleHtml}`;
+    fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:6px">✓ <strong>${correct}</strong></div>${exampleHtml}`;
+
     learnCheckPos++;
-    if (learnCheckPos >= learnCheckQueue.length) {
-      setTimeout(() => startPhrasesStep(), exampleHtml ? 1200 : 600);
+    const isLast = learnCheckPos >= learnCheckQueue.length;
+
+    if (exampleHtml) {
+      // Show example with "Далее" button
+      fb.innerHTML += `<button class="btn btn-primary" onclick="${isLast ? 'startPhrasesStep()' : 'showLearnCheckForm()'}" style="width:100%;padding:9px;margin-top:10px">Далее →</button>`;
     } else {
-      setTimeout(() => showLearnCheckForm(), exampleHtml ? 1200 : 600);
+      if (isLast) {
+        startPhrasesStep();
+      } else {
+        setTimeout(() => showLearnCheckForm(), 500);
+      }
     }
   } else {
     learnCheckErrors++;
