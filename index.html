@@ -9591,12 +9591,13 @@ const BADGE_CLASS = {er:'badge-er',ir:'badge-ir',re:'badge-re',irr:'badge-irr',r
 async function startSRSReview() {
   let dueVerbs = [];
   if (sbUser) {
-    const { data } = await sb.from('srs')
-      .select('verb_id')
-      .eq('user_id', sbUser.id)
-      .lte('due_date', todayStr())
-      .catch(() => ({ data: [] }));
-    dueVerbs = (data || []).map(r => r.verb_id);
+    try {
+      const { data } = await sb.from('srs')
+        .select('verb_id')
+        .eq('user_id', sbUser.id)
+        .lte('due_date', todayStr());
+      dueVerbs = (data || []).map(r => r.verb_id);
+    } catch(e) { console.error(e); }
   } else {
     const srs = loadSRS();
     dueVerbs = VERBS.filter(v => {
@@ -10105,12 +10106,13 @@ async function getSRSDueCount() {
     const today = todayStr();
     return VERBS.filter(v => { const c = srs[v.id]; return c && c.dueDate <= today; }).length;
   }
-  const { data } = await sb.from('srs')
-    .select('verb_id')
-    .eq('user_id', sbUser.id)
-    .lte('due_date', todayStr())
-    .catch(() => ({ data: [] }));
-  return data ? data.length : 0;
+  try {
+    const { data } = await sb.from('srs')
+      .select('verb_id')
+      .eq('user_id', sbUser.id)
+      .lte('due_date', todayStr());
+    return data ? data.length : 0;
+  } catch(e) { return 0; }
 }
 
 function getSRSNewCount() {
