@@ -10316,16 +10316,18 @@ function verbStatRow(v) {
 }
 
 async function confirmReset() {
-  if (!confirm('Сбросить всю статистику? Это действие нельзя отменить.')) return;
+  if (!confirm('Сбросить всю статистику и расписание повторений? Это действие нельзя отменить.')) return;
 
   // Clear localStorage
   localStorage.removeItem(profileKey('stats'));
   localStorage.removeItem(profileKey('meta'));
+  localStorage.removeItem(profileKey('srs'));
 
   // Clear Supabase
   if (sbUser) {
     await sb.from('stats').delete().eq('user_id', sbUser.id);
     await sb.from('meta').delete().eq('user_id', sbUser.id);
+    await sb.from('srs').delete().eq('user_id', sbUser.id);
   }
 
   renderStats();
