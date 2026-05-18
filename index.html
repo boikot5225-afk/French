@@ -9543,11 +9543,22 @@ async function renderHome() {
   document.getElementById('hs-noun-total').textContent = nTotal;
   document.getElementById('hs-noun-pct').textContent = nTotal > 0 ? Math.round(nCorrect/nTotal*100) + '%' : '—';
 
-  // SRS widget
-  const today = todayStr();
-  const due = VERBS.filter(v => { const c = srs[v.id]; return c && c.dueDate <= today; }).length;
-  const newCount = VERBS.filter(v => !srs[v.id] && !stats[v.id]).length;
-  const knownCount = VERBS.filter(v => srs[v.id]).length;
+  // SRS widget - read from Supabase
+  let due = 0;
+  if (sbUser) {
+    try {
+      const { data } = await sb.from('srs')
+        .select('verb_id')
+        .eq('user_id', sbUser.id)
+        .lte('due_date', todayStr());
+      due = data ? data.length : 0;
+    } catch(e) {}
+  } else {
+    const srs = loadSRS();
+    due = VERBS.filter(v => { const c = srs[v.id]; return c && c.dueDate <= todayStr(); }).length;
+  }
+  const newCount = VERBS.filter(v => !loadSRS()[v.id]).length;
+  const knownCount = VERBS.length - newCount;
 
   const srsWidget = document.getElementById('srs-widget');
   if (srsWidget) {
