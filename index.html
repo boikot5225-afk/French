@@ -2157,6 +2157,33 @@ input:-webkit-autofill:focus {
     <div class="fr-keyboard" id="fr-kb-learn"></div>
   </div>
 
+  <!-- Step 3: Phrases -->
+  <div id="study-phrases-view" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="backToLearnCard()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0">← Назад</button>
+      <div style="font-size:0.78rem;color:var(--text-muted)" id="phrases-step-label">Фраза 1 из 3</div>
+    </div>
+
+    <div class="trainer-card" style="margin-bottom:16px;">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:12px">📝 Фраза в контексте</div>
+      <div style="font-size:1.1rem;color:var(--text);line-height:1.6;margin-bottom:8px;font-family:'Playfair Display',serif;font-style:italic" id="phrase-fr">—</div>
+      <div style="font-size:0.82rem;color:var(--text-muted)" id="phrase-ru">—</div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <input type="text" id="phrase-input" placeholder="введи пропущенное слово..." autocomplete="off" autocorrect="off" autocapitalize="off" inputmode="none" spellcheck="false" readonly
+        style="flex:1;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:1rem;outline:none"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')checkPhraseAnswer()">
+      <button class="btn btn-primary" onclick="checkPhraseAnswer()" style="padding:11px 16px">Проверить</button>
+    </div>
+    <div id="phrase-feedback" style="min-height:40px;"></div>
+    <div style="text-align:right;margin-top:4px">
+      <button class="kb-toggle-btn" id="kb-toggle-phrase-learn" onclick="toggleKbMode('phrase-learn')">⌨ Своя клавиатура</button>
+    </div>
+    <div class="fr-keyboard" id="fr-kb-phrase-learn"></div>
+  </div>
+
   <!-- Step 4: Result -->
   <div id="study-result-view" style="display:none;text-align:center;padding:24px 0;">
     <div style="font-size:3rem;margin-bottom:12px" id="result-emoji">✅</div>
@@ -8252,7 +8279,7 @@ const ACCENTS = {
   a:['à','â','ä'], e:['é','è','ê','ë'], i:['î','ï'], o:['ô','œ'], u:['ù','û','ü'], c:['ç'],
   A:['À','Â','Ä'], E:['É','È','Ê','Ë'], I:['Î','Ï'], O:['Ô','Œ'], U:['Ù','Û','Ü'], C:['Ç'],
 };
-const KB_INPUT_MAP = { main:'answer-input', grp:'ganswer-input', ph:'ph-input', num:'num-input', learn:'check-input' };
+const KB_INPUT_MAP = { main:'answer-input', grp:'ganswer-input', ph:'ph-input', num:'num-input', learn:'check-input', 'phrase-learn':'phrase-input' };
 let frKbShift=false, frKbActiveId=null, frKbBlurTimer=null, frLongPressTimer=null, frAccentPopup=null;
 let frTouchTarget=null, frTouchMoved=false;
 
@@ -10981,8 +11008,8 @@ function checkLearnAnswer() {
     speak(correct);
     learnCheckPos++;
     if (learnCheckPos >= learnCheckQueue.length) {
-      // All 6 done!
-      finishLearn();
+      // All 6 forms done — go to phrases
+      startPhrasesStep();
     } else {
       fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:8px">✓ Правильно!</div>`;
       setTimeout(() => showLearnCheckForm(), 600);
@@ -10997,25 +11024,79 @@ function checkLearnAnswer() {
   }
 }
 
+let learnPhraseQueue = [];
+let learnPhraseIdx = 0;
+let learnPhraseErrors = 0;
+
+function startPhrasesStep() {
+  // Get phrases for this verb
+  const verbPhrases = PHRASES.filter(p => p.verbId === learnVerb.id && p.tense === 'present');
+  if (!verbPhrases.length) {
+    // No phrases — go straight to result
+    finishLearn();
+    return;
+  }
+  // Pick up to 3 random phrases
+  learnPhraseQueue = verbPhrases.sort(() => Math.random() - 0.5).slice(0, 3);
+  learnPhraseIdx = 0;
+  learnPhraseErrors = 0;
+  showPhraseForm();
+}
+
+function showPhraseForm() {
+  const phrase = learnPhraseQueue[learnPhraseIdx];
+  document.getElementById('phrases-step-label').textContent =
+    `Фраза ${learnPhraseIdx + 1} из ${learnPhraseQueue.length}`;
+  document.getElementById('phrase-fr').textContent = phrase.fr;
+  document.getElementById('phrase-ru').textContent = phrase.ru;
+  document.getElementById('phrase-input').value = '';
+  document.getElementById('phrase-feedback').innerHTML = '';
+  showLearnView('study-phrases-view');
+  if (frKbEnabled) showFrKb('phrase-learn');
+  setTimeout(() => document.getElementById('phrase-input')?.focus(), 100);
+}
+
+function checkPhraseAnswer() {
+  const phrase = learnPhraseQueue[learnPhraseIdx];
+  const input = document.getElementById('phrase-input')?.value.trim();
+  const isCorrect = normalize(input) === normalize(phrase.answer);
+  const fb = document.getElementById('phrase-feedback');
+
+  if (isCorrect) {
+    fb.innerHTML = `<div class="feedback-msg correct">✓ Правильно!</div>`;
+    speak(phrase.fr.replace('___', phrase.answer));
+    learnPhraseIdx++;
+    if (learnPhraseIdx >= learnPhraseQueue.length) {
+      setTimeout(() => finishLearn(), 600);
+    } else {
+      setTimeout(() => showPhraseForm(), 600);
+    }
+  } else {
+    learnPhraseErrors++;
+    fb.innerHTML = `<div class="feedback-msg wrong" style="margin-bottom:10px">✗ Правильно: <strong>${phrase.answer}</strong></div>
+      <button class="btn btn-primary" onclick="learnPhraseIdx++;learnPhraseIdx>=learnPhraseQueue.length?finishLearn():showPhraseForm()" style="width:100%;padding:10px">Понял, дальше →</button>`;
+    speak(phrase.fr.replace('___', phrase.answer));
+  }
+}
+
 function finishLearn() {
-  // Interval: 2 days if no errors, 1 day if had errors
-  const interval = learnCheckErrors === 0 ? 2 : 1;
+  const interval = (learnCheckErrors === 0 && learnPhraseErrors === 0) ? 2 : 1;
   const srs = loadSRS();
   srs[learnVerb.id] = {
     interval, easeFactor: 2.5,
-    repetitions: learnCheckErrors === 0 ? 1 : 0,
+    repetitions: interval === 2 ? 1 : 0,
     dueDate: addDays(todayStr(), interval),
-    lastReview: todayStr()
+    lastReview: todayStr(),
+    stage: 'forms'
   };
   localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
 
-  // Show result immediately
-  document.getElementById('result-emoji').textContent = learnCheckErrors === 0 ? '🎉' : '✅';
-  document.getElementById('result-title').textContent = learnCheckErrors === 0 ? 'Отлично! Без ошибок!' : 'Изучен!';
+  document.getElementById('result-emoji').textContent = interval === 2 ? '🎉' : '✅';
+  document.getElementById('result-title').textContent = interval === 2 ? 'Отлично! Без ошибок!' : 'Изучен!';
 
   studyQueueIdx++;
   const hasNext = studyQueueIdx < studyQueue.length;
-  const errText = learnCheckErrors > 0 ? ` (${learnCheckErrors} ошибок)` : '';
+  const errText = (learnCheckErrors + learnPhraseErrors) > 0 ? ` (${learnCheckErrors + learnPhraseErrors} ошибок)` : '';
   document.getElementById('result-text').textContent = hasNext
     ? `${learnVerb.inf} добавлен${errText}. Осталось: ${studyQueue.length - studyQueueIdx}`
     : `${learnVerb.inf} добавлен${errText}. Повторить через ${interval} дн.`;
@@ -11032,16 +11113,17 @@ function finishLearn() {
   }
   showLearnView('study-result-view');
 
-  // Save to Supabase in background
   if (sbUser) {
     sb.from('srs').upsert({
       user_id: sbUser.id, verb_id: learnVerb.id,
       interval, ease_factor: 2.5,
-      repetitions: learnCheckErrors === 0 ? 1 : 0,
+      repetitions: interval === 2 ? 1 : 0,
       due_date: addDays(todayStr(), interval),
-      last_review: todayStr()
+      last_review: todayStr(),
+      stage: 'forms'
     }, { onConflict: 'user_id,verb_id' }).catch(()=>{});
   }
+
 }
 
 function backToLearnCard() { showLearnView('study-card-view'); }
@@ -11053,7 +11135,7 @@ function exitLearnSession() {
 }
 
 function showLearnView(id) {
-  ['study-pick','study-card-view','study-check-view','study-result-view'].forEach(v => {
+  ['study-pick','study-card-view','study-check-view','study-phrases-view','study-result-view'].forEach(v => {
     const el = document.getElementById(v);
     if (el) el.style.display = v === id ? 'block' : 'none';
   });
