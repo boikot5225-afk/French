@@ -2425,11 +2425,11 @@ sb.auth.getSession().then(async ({ data }) => {
       if (profile) {
         currentProfile = profile.username;
         if (cloudStats && Object.keys(cloudStats).length)
-          localStorage.setItem('conj_' + profile.username + '_stats', JSON.stringify(cloudStats));
+          localStorage.setItem('conj_' + profile.username.toLowerCase() + '_stats', JSON.stringify(cloudStats));
         if (cloudSRS && Object.keys(cloudSRS).length)
-          localStorage.setItem('conj_' + profile.username + '_srs', JSON.stringify(cloudSRS));
+          localStorage.setItem('conj_' + profile.username.toLowerCase() + '_srs', JSON.stringify(cloudSRS));
         if (cloudMeta)
-          localStorage.setItem('conj_' + profile.username + '_meta', JSON.stringify(cloudMeta));
+          localStorage.setItem('conj_' + profile.username.toLowerCase() + '_meta', JSON.stringify(cloudMeta));
         loginProfile(profile.username);
       }
     } catch(e) { console.error('Session restore error:', e); }
@@ -8681,15 +8681,13 @@ async function doLogin() {
       if (Object.keys(localStats).length) sbSaveStats(localStats);
     }
 
+    // Always take SRS from cloud - cloud is source of truth
     if (cloudSRS && Object.keys(cloudSRS).length) {
+      localStorage.setItem('conj_' + profile.username.toLowerCase() + '_srs', JSON.stringify(cloudSRS));
+    } else {
+      // Cloud empty - push local to cloud
       const localSRS = (() => { try { return JSON.parse(localStorage.getItem('conj_' + profile.username.toLowerCase() + '_srs') || '{}'); } catch { return {}; } })();
-      const mergedSRS = { ...localSRS };
-      Object.entries(cloudSRS).forEach(([k, v]) => {
-        if (!mergedSRS[k] || v.interval > mergedSRS[k].interval) {
-          mergedSRS[k] = v;
-        }
-      });
-      localStorage.setItem('conj_' + profile.username.toLowerCase() + '_srs', JSON.stringify(mergedSRS));
+      if (Object.keys(localSRS).length) sbSaveSRS(localSRS);
     }
     if (cloudMeta)
       localStorage.setItem('conj_' + profile.username + '_meta', JSON.stringify(cloudMeta));
@@ -11150,7 +11148,8 @@ function showLearnCheckForm() {
   }
 }
 
-function checkLearnAnswer() {
+async function checkLearnAnswer() {
+  if (!PHRASES_LOADED && sbUser) await loadPhrasesFromCloud();
   const idx = learnCheckQueue[learnCheckPos];
   const input = document.getElementById('check-input')?.value.trim().toLowerCase();
   const correct = (learnVerb.conj?.present?.[idx] || '').toLowerCase();
@@ -11159,7 +11158,6 @@ function checkLearnAnswer() {
 
   if (isCorrect) {
     speak(correct);
-    // Find a matching phrase for this exact form
     const matchingPhrase = PHRASES.find(p =>
       p.verbId === learnVerb.id &&
       p.tense === 'present' &&
@@ -11171,21 +11169,13 @@ function checkLearnAnswer() {
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">${matchingPhrase.ru}</div>
          </div>`
       : '';
-    fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:6px">✓ <strong>${correct}</strong></div>${exampleHtml}`;
 
     learnCheckPos++;
     const isLast = learnCheckPos >= learnCheckQueue.length;
+    const nextFn = isLast ? 'startPhrasesStep()' : 'showLearnCheckForm()';
 
-    if (exampleHtml) {
-      // Show example with "Далее" button
-      fb.innerHTML += `<button class="btn btn-primary" onclick="${isLast ? 'startPhrasesStep()' : 'showLearnCheckForm()'}" style="width:100%;padding:9px;margin-top:10px">Далее →</button>`;
-    } else {
-      if (isLast) {
-        startPhrasesStep();
-      } else {
-        setTimeout(() => showLearnCheckForm(), 500);
-      }
-    }
+    fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:6px">✓ <strong>${correct}</strong></div>${exampleHtml}
+      <button class="btn btn-primary" onclick="${nextFn}" style="width:100%;padding:9px;margin-top:10px">Далее →</button>`;
   } else {
     learnCheckErrors++;
     speak(correct);
@@ -11200,8 +11190,10 @@ let learnPhraseQueue = [];
 let learnPhraseIdx = 0;
 let learnPhraseErrors = 0;
 
-function startPhrasesStep() {
-  // Get phrases for this verb
+async function startPhrasesStep() {
+  // Ensure phrases loaded from Supabase
+  if (!PHRASES_LOADED && sbUser) await loadPhrasesFromCloud();
+
   const verbPhrases = PHRASES.filter(p => p.verbId === learnVerb.id && p.tense === 'present');
   if (!verbPhrases.length) {
     // No phrases — go straight to result
@@ -11213,6 +11205,15 @@ function startPhrasesStep() {
   learnPhraseIdx = 0;
   learnPhraseErrors = 0;
   showPhraseForm();
+}
+
+function advancePhrase() {
+  learnPhraseIdx++;
+  if (learnPhraseIdx >= learnPhraseQueue.length) {
+    finishLearn();
+  } else {
+    showPhraseForm();
+  }
 }
 
 function showPhraseForm() {
@@ -11240,14 +11241,11 @@ function checkPhraseAnswer() {
   const fb = document.getElementById('phrase-feedback');
 
   if (isCorrect) {
-    fb.innerHTML = `<div class="feedback-msg correct">✓ Правильно!</div>`;
+    const fullPhrase = phrase.fr.replace('___', `<strong style="color:var(--accent)">${phrase.answer}</strong>`);
+    fb.innerHTML = `<div class="feedback-msg correct" style="margin-bottom:10px">✓ Правильно!</div>
+      <div style="font-size:0.88rem;font-style:italic;color:var(--text);line-height:1.6;padding:10px 12px;background:var(--surface2);border-radius:8px;margin-bottom:10px">${fullPhrase}</div>
+      <button class="btn btn-primary" onclick="advancePhrase()" style="width:100%;padding:9px">Далее →</button>`;
     speak(phrase.fr.replace('___', phrase.answer));
-    learnPhraseIdx++;
-    if (learnPhraseIdx >= learnPhraseQueue.length) {
-      setTimeout(() => finishLearn(), 600);
-    } else {
-      setTimeout(() => showPhraseForm(), 600);
-    }
   } else {
     learnPhraseErrors++;
     speak(phrase.fr.replace('___', phrase.answer));
