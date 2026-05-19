@@ -8285,17 +8285,20 @@ async function loadPhrasesFromCloud() {
   try {
     const { data, error } = await sb.from('phrases').select('*');
     if (error) throw error;
-    PHRASES.length = 0;
-    data.forEach(p => PHRASES.push({
-      id: p.id, verbId: p.verb_id,
-      tense: p.tense, fr: p.fr,
-      answer: p.answer, ru: p.ru
-    }));
+    if (data && data.length) {
+      PHRASES.length = 0;
+      data.forEach(p => PHRASES.push({
+        id: p.id, verbId: p.verb_id,
+        tense: p.tense, fr: p.fr,
+        answer: p.answer, ru: p.ru
+      }));
+    }
     PHRASES_LOADED = true;
     console.log('Loaded ' + PHRASES.length + ' phrases from Supabase');
   } catch(e) {
     console.error('Failed to load phrases:', e.message);
-    showToast('⚠️ Не удалось загрузить фразы. Проверьте соединение.');
+    showToast('⚠️ Не удалось загрузить фразы. Используем локальные данные.');
+    PHRASES_LOADED = true; // mark as loaded to avoid infinite retries
   }
 }
 
@@ -9626,8 +9629,16 @@ async function renderHome() {
     const srs = loadSRS();
     due = VERBS.filter(v => { const c = srs[v.id]; return c && c.dueDate <= todayStr(); }).length;
   }
-  const newCount = VERBS.filter(v => !loadSRS()[v.id]).length;
-  const knownCount = VERBS.length - newCount;
+  let knownCount = 0;
+  if (sbUser) {
+    try {
+      const { data } = await sb.from('srs').select('verb_id').eq('user_id', sbUser.id);
+      knownCount = data ? data.length : 0;
+    } catch(e) { knownCount = Object.keys(loadSRS()).length; }
+  } else {
+    knownCount = Object.keys(loadSRS()).length;
+  }
+  const newCount = Math.max(0, VERBS.length - knownCount);
 
   const srsWidget = document.getElementById('srs-widget');
   if (srsWidget) {
