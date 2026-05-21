@@ -1712,12 +1712,10 @@ input:-webkit-autofill:focus {
       <button onclick="speak(document.getElementById('noun-word').textContent)" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;margin:12px auto 0;">🔊</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;" id="noun-answer-area">
-      <button onclick="checkNoun('m')" style="padding:18px;font-size:1.3rem;font-family:'Playfair Display',serif;font-style:italic;border:2px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;transition:all 0.2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation">
-        <span style="font-size:0.7rem;display:block;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:4px;font-style:normal">masculin</span>
+      <button onclick="checkNoun('m')" style="padding:18px;font-size:1.5rem;font-family:'Playfair Display',serif;font-style:italic;border:2px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;transition:all 0.2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation">
         le ___
       </button>
-      <button onclick="checkNoun('f')" style="padding:18px;font-size:1.3rem;font-family:'Playfair Display',serif;font-style:italic;border:2px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;transition:all 0.2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation">
-        <span style="font-size:0.7rem;display:block;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:4px;font-style:normal">féminin</span>
+      <button onclick="checkNoun('f')" style="padding:18px;font-size:1.5rem;font-family:'Playfair Display',serif;font-style:italic;border:2px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;transition:all 0.2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation">
         la ___
       </button>
     </div>
@@ -5441,7 +5439,9 @@ function updateStreak() {
   const m = loadMeta();
   const today = new Date().toDateString();
   if (m.lastDay === today) return;
-  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const yesterday = d.toDateString();
   if (m.lastDay === yesterday) {
     m.streak = (m.streak || 0) + 1;
   } else {
@@ -5652,21 +5652,22 @@ async function startSRSReview() {
 function markAsKnown() {
   if (!currentVerb) return;
   const srs = loadSRS();
-  // Mark as known — set interval to 7 days, high ease factor
-  srs[currentVerb.id] = {
-    interval: 7,
-    easeFactor: 2.5,
-    repetitions: 2,
-    dueDate: addDays(todayStr(), 7),
-    lastReview: todayStr(),
-    markedKnown: true
-  };
-  saveSRS(srs);
-  // Also record in stats
+  const existing = srs[currentVerb.id];
+  // Don't downgrade — only mark if no card or current interval is less than 7
+  if (!existing || existing.interval < 7) {
+    srs[currentVerb.id] = {
+      interval: 7,
+      easeFactor: existing ? existing.easeFactor : 2.5,
+      repetitions: existing ? Math.max(existing.repetitions, 2) : 2,
+      dueDate: addDays(todayStr(), 7),
+      lastReview: todayStr(),
+      markedKnown: true
+    };
+    saveSRS(srs);
+  }
   const stats = loadStats();
   if (!stats[currentVerb.id]) stats[currentVerb.id] = {total:1, correct:1};
   saveStats(stats);
-  // Visual feedback
   const fb = document.getElementById('feedback-row');
   if (fb) fb.innerHTML = `<div style="color:var(--good);font-size:0.82rem">✓ ${currentVerb.inf} — помечен как знакомый</div>`;
   setTimeout(resetTrainer, 800);
@@ -5772,6 +5773,19 @@ function getReflexivePronoun(pronounIdx, form) {
   return base + ' ';
 }
 
+function getAgreedPP(pp, pronounIdx) {
+  // Agreement for être verbs: elle/elles add -e, ils/elles add -s
+  // Pronouns: 0=je, 1=tu, 2=il/elle, 3=nous, 4=vous, 5=ils/elles
+  // Note: nous/vous can be any gender, we use masculine by default
+  // For elle (idx 2 feminine) and elles (idx 5) we need context
+  // Since we don't track gender, we use the pronoun display
+  const pronoun = PRONOUNS[pronounIdx];
+  if (pronoun === 'elle') return pp.endsWith('e') ? pp : pp + 'e';
+  if (pronoun === 'ils/elles' || pronoun === 'ils') return pp.endsWith('s') ? pp : pp + 's';
+  if (pronoun === 'elles') return pp.endsWith('es') ? pp : (pp.endsWith('e') ? pp + 's' : pp + 'es');
+  return pp;
+}
+
 function getCorrectAnswer() {
   if (!currentVerb || !currentTense) return '';
   if (currentVerb.reflexive) {
@@ -5779,7 +5793,8 @@ function getCorrectAnswer() {
     if (currentTense === 'passe') {
       const auxForms = ['suis','es','est','sommes','êtes','sont'];
       const refPron = getReflexivePronoun(currentPronounIdx, auxForms[currentPronounIdx]);
-      return elide(pronoun + ' ' + refPron + auxForms[currentPronounIdx] + ' ' + currentVerb.pp);
+      const pp = getAgreedPP(currentVerb.pp, currentPronounIdx);
+      return elide(pronoun + ' ' + refPron + auxForms[currentPronounIdx] + ' ' + pp);
     }
     const form = currentVerb.conj[currentTense]?.[currentPronounIdx] || '';
     const refPron = getReflexivePronoun(currentPronounIdx, form);
@@ -5789,12 +5804,14 @@ function getCorrectAnswer() {
     const pronoun = PRONOUNS[currentPronounIdx];
     const aux = currentVerb.aux;
     let auxForm;
+    let pp = currentVerb.pp;
     if (aux === 'avoir') {
       auxForm = ['ai','as','a','avons','avez','ont'][currentPronounIdx];
     } else {
       auxForm = ['suis','es','est','sommes','êtes','sont'][currentPronounIdx];
+      pp = getAgreedPP(pp, currentPronounIdx);
     }
-    return elide(pronoun + ' ' + auxForm + ' ' + currentVerb.pp);
+    return elide(pronoun + ' ' + auxForm + ' ' + pp);
   }
   const form = currentVerb.conj[currentTense][currentPronounIdx];
   return elide(PRONOUNS[currentPronounIdx] + ' ' + form);
@@ -6057,41 +6074,34 @@ async function saveSRS(s) {
   }
 }
 
-async function updateSRS(verbId, correct) {
-  if (!verbId || !sbUser) return;
+function updateSRS(verbId, correct) {
+  if (!verbId) return;
   const grade = correct ? 4 : 1;
 
-  // Load current card from Supabase
-  let srsData = null;
-  try {
-    const { data } = await sb.from('srs').select('*').eq('user_id', sbUser.id).eq('verb_id', verbId).single();
-    srsData = data;
-  } catch(e) {}
-  const card = srsData ? {
-    interval: srsData.interval,
-    easeFactor: srsData.ease_factor,
-    repetitions: srsData.repetitions,
-    dueDate: srsData.due_date
-  } : null;
-
+  // Read from localStorage cache — no SELECT needed
+  const srs = loadSRS();
+  const card = srs[verbId] || null;
   const updated = sm2Update(card, grade);
 
-  // Save single row to Supabase
-  await sb.from('srs').upsert({
-    user_id: sbUser.id,
-    verb_id: verbId,
-    interval: updated.interval,
-    ease_factor: updated.easeFactor,
-    repetitions: updated.repetitions,
-    due_date: updated.dueDate,
-    last_review: updated.lastReview,
-    marked_known: updated.markedKnown || false
-  }, { onConflict: 'user_id,verb_id' });
-
-  // Update localStorage cache
-  const srs = loadSRS();
+  // Update localStorage cache immediately
   srs[verbId] = updated;
   localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
+
+  // Save to Supabase in background (fire and forget)
+  if (sbUser) {
+    sb.from('srs').upsert({
+      user_id: sbUser.id,
+      verb_id: verbId,
+      interval: updated.interval,
+      ease_factor: updated.easeFactor,
+      repetitions: updated.repetitions,
+      due_date: updated.dueDate,
+      last_review: updated.lastReview,
+      marked_known: false
+    }, { onConflict: 'user_id,verb_id' }).then(({ error }) => {
+      if (error) console.warn('SRS sync failed, saved locally:', error.message);
+    });
+  }
 }
 
 function todayStr() {
@@ -6110,16 +6120,15 @@ function sm2Update(card, grade) {
   let { interval = 1, easeFactor = SRS_DEFAULT_EF, repetitions = 0 } = card || {};
 
   if (grade >= 3) {
-    // Correct
     if (repetitions === 0) interval = 1;
     else if (repetitions === 1) interval = 6;
     else interval = Math.round(interval * easeFactor);
     repetitions++;
     easeFactor = Math.max(SRS_MIN_EF, easeFactor + 0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02));
   } else {
-    // Incorrect — reset
     repetitions = 0;
     interval = 1;
+    easeFactor = Math.max(SRS_MIN_EF, easeFactor - 0.2); // Снижаем за ошибку
   }
 
   const dueDate = addDays(todayStr(), interval);
@@ -7220,14 +7229,27 @@ async function finishLearn() {
     );
   }
   const srs = loadSRS();
-  srs[learnVerb.id] = {
-    interval, easeFactor: 2.5,
-    repetitions: interval === 2 ? 1 : 0,
-    dueDate: addDays(todayStr(), interval),
-    lastReview: todayStr(),
-    stage: 'forms'
-  };
-  localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
+  const existing = srs[learnVerb.id];
+  // Only create/update if no existing card or existing interval is smaller
+  if (!existing || existing.interval <= interval) {
+    srs[learnVerb.id] = {
+      interval, easeFactor: 2.5,
+      repetitions: interval === 2 ? 1 : 0,
+      dueDate: addDays(todayStr(), interval),
+      lastReview: todayStr(),
+      stage: 'forms'
+    };
+    localStorage.setItem(profileKey('srs'), JSON.stringify(srs));
+    if (sbUser) {
+      sb.from('srs').upsert({
+        user_id: sbUser.id, verb_id: learnVerb.id,
+        interval, ease_factor: 2.5,
+        repetitions: interval === 2 ? 1 : 0,
+        due_date: addDays(todayStr(), interval),
+        last_review: todayStr(), stage: 'forms'
+      }, { onConflict: 'user_id,verb_id' });
+    }
+  }
 
   document.getElementById('result-emoji').textContent = interval === 2 ? '🎉' : '✅';
   document.getElementById('result-title').textContent = interval === 2 ? 'Отлично! Без ошибок!' : 'Изучен!';
