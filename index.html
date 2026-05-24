@@ -675,6 +675,7 @@ input:-webkit-autofill:focus {
   border-color: var(--border) !important;
   transition: background-color 5000s ease-in-out 0s;
 }
+.tts-engine-btn {
   padding: 6px 12px;
   border-radius: 16px;
   font-size: 0.72rem;
@@ -893,7 +894,14 @@ input:-webkit-autofill:focus {
 <div id="toast" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9998;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-size:0.82rem;color:var(--text);box-shadow:0 4px 20px rgba(0,0,0,0.4);white-space:nowrap;"></div>
 
 <style>
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+.shake { animation: shake 0.35s ease; }
 </style>
 
 <div id="screen-profile" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg);">
@@ -4383,6 +4391,7 @@ function buildFrKb(kbId) {
 }
 
 function frHandleKey(kbId,ch) {
+  if (navigator.vibrate) navigator.vibrate(8);
   if(ch==='⇧'){frToggleShift(kbId);return;}
   if(ch==='⌫'){frBackspace(kbId);return;}
   if(ch==='⏎'){frEnter(kbId);return;}
@@ -5281,12 +5290,8 @@ async function saveMeta(m) {
   }
 }
 
-function getProfiles() {
-  try { return JSON.parse(localStorage.getItem('conj_profiles') || '[]'); } catch { return []; }
-}
-function saveProfiles(list) {
-  try { localStorage.setItem('conj_profiles', JSON.stringify(list)); } catch(e) {}
-}
+function getProfiles() { return []; }
+function saveProfiles(list) { /* local profiles removed */ }
 
 function loginProfile(name) {
   currentProfile = name.toLowerCase();
@@ -5314,7 +5319,7 @@ function logoutProfile() {
   if (brand) brand.innerHTML = 'conjugaison';
   document.getElementById('main-app').style.display = 'none';
   document.getElementById('screen-profile').style.display = 'flex';
-  renderProfileScreen();
+  switchAuthTab('login');
 }
 
 function renderProfileScreen() {
@@ -6034,6 +6039,10 @@ function checkAnswer() {
     _sb.style.cssText = 'background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;cursor:pointer;color:var(--text-muted);font-size:0.85rem';
     _sb.onclick = (()=>{const _c=correct;return ()=>speak(_c);})();
     fb.appendChild(_sb);
+    // Shake animation
+    const card = document.getElementById('trainer-card');
+    if (card) { card.classList.add('shake'); setTimeout(() => card.classList.remove('shake'), 400); }
+    if (navigator.vibrate) navigator.vibrate([30, 10, 30]);
   }
 }
 
@@ -7936,7 +7945,7 @@ initTTSEngineUI();
 // Show profile screen on start
 document.getElementById("main-app").style.display = "none";
 document.getElementById("screen-profile").style.display = "flex";
-renderProfileScreen();
+switchAuthTab('login');
 </script>
 </div><!-- /main-app -->
 </body>
