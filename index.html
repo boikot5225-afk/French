@@ -1005,7 +1005,7 @@ input:-webkit-autofill:focus {
   <div class="bottom-nav-item" id="bn-grammar" onclick="showScreen('grammar')">
     <span class="bn-icon">📖</span><span>Правила</span>
   </div>
-  <div class="bottom-nav-item" id="bn-numbers" onclick="showScreen('numbers')">
+  <div class="bottom-nav-item" id="bn-numbers" style="display:none" onclick="showScreen('trainer');setTrainerMode('numbers')">
     <span class="bn-icon">🔢</span><span>Числа</span>
   </div>
   <div class="bottom-nav-item" id="bn-more" onclick="toggleMoreMenu()">
@@ -1019,10 +1019,8 @@ input:-webkit-autofill:focus {
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
     <div onclick="showScreen('leaderboard');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">🏆</span>Лидерборд</div>
     <div onclick="showScreen('phrases');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📝</span>Фразы</div>
-    <div onclick="showScreen('changelog');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📋</span>Обновления</div>
     <div onclick="showScreen('dict');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📚</span>Словарь</div>
     <div onclick="showScreen('stats');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📊</span>Статистика</div>
-    <div onclick="showScreen('groups');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">🔀</span>Группы</div>
     <div onclick="showProfileManage();closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">👤</span>Профиль</div>
     <div onclick="logoutProfile();closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:#e05555"><span style="font-size:1.6rem">⇠</span>Выйти</div>
   </div>
@@ -1585,6 +1583,10 @@ input:-webkit-autofill:focus {
       style="flex:1;padding:7px 4px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
       🔗 Предлоги
     </button>
+    <button id="mode-nums-btn" onclick="setTrainerMode('numbers')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      🔢 Числа
+    </button>
   </div>
 
   <!-- VERBS MODE -->
@@ -1680,8 +1682,9 @@ input:-webkit-autofill:focus {
       <div id="recall-answer" style="font-family:'IBM Plex Mono',monospace;font-size:1.6rem;color:var(--accent);margin-bottom:8px;"></div>
       <div id="recall-example" style="font-size:0.82rem;color:var(--text-muted);font-style:italic;margin-bottom:20px;"></div>
       <div style="display:flex;gap:12px;justify-content:center;">
-        <button class="btn btn-danger" onclick="recallResult(false)">✗ Не знал</button>
-        <button class="btn btn-primary" onclick="recallResult(true)">✓ Знал</button>
+        <button class="btn btn-danger" onclick="recallResult(1)" style="flex:1;padding:10px 8px;font-size:0.82rem">✗ Забыл</button>
+        <button class="btn btn-secondary" onclick="recallResult(3)" style="flex:1;padding:10px 8px;font-size:0.82rem">🤔 С трудом</button>
+        <button class="btn btn-primary" onclick="recallResult(4)" style="flex:1;padding:10px 8px;font-size:0.82rem">✓ Легко</button>
       </div>
     </div>
   </div>
@@ -1761,6 +1764,45 @@ input:-webkit-autofill:focus {
     <!-- Answer buttons — shown dynamically -->
     <div id="prep-answer-area" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px;"></div>
     <div id="prep-feedback" style="min-height:48px;display:flex;gap:10px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
+  <!-- NUMBERS MODE -->
+  <div id="trainer-numbers-mode" style="display:none;">
+  <div id="numbers-settings" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px;">
+    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:14px">Диапазон чисел</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:0.82rem;color:var(--text-muted)">от</label>
+        <input id="num-from" type="number" value="0" min="0" max="999999" style="width:90px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:0.82rem;color:var(--text-muted)">до</label>
+        <input id="num-to" type="number" value="100" min="1" max="999999" style="width:90px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,20)">0–20</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,100)">0–100</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,1000)">0–1000</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(1000,10000)">1000–10000</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,999999)">Любое</button>
+    </div>
+  </div>
+  <div class="score-display" style="margin-bottom:20px;">
+    <div class="score-item"><div class="num score-good" id="nscore-good">0</div><div class="lbl">верно</div></div>
+    <div class="score-item"><div class="num score-bad" id="nscore-bad">0</div><div class="lbl">ошибок</div></div>
+    <div class="score-item"><div class="num score-streak" id="nscore-streak">0</div><div class="lbl">серия</div></div>
+  </div>
+  <div class="trainer-card" id="num-card" style="min-height:180px;">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px">Напиши словами по-французски</div>
+    <div id="num-display" style="font-family:'Playfair Display',serif;font-size:4rem;color:var(--text);line-height:1;margin-bottom:8px;">—</div>
+    <button id="num-speak-btn" onclick="speakCurrentNumber()" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;margin:0 auto;transition:all 0.2s">🔊</button>
+  </div>
+  <div class="answer-area" style="margin-top:16px;">
+    <input type="text" class="answer-input" id="num-input" inputmode="none" placeholder="ex: vingt-deux..." autocomplete="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter')checkNumber()">
+    <button class="btn btn-primary" onclick="checkNumber()">Проверить</button>
+  </div>
+  <div style="text-align:right;margin-top:6px"><button class="kb-toggle-btn" id="kb-toggle-num" onclick="toggleKbMode('num')">⌨ Своя клавиатура</button></div>
+  <div class="fr-keyboard" id="fr-kb-num"></div>
+  <div id="num-feedback" style="min-height:52px;display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
   </div>
 
 </div><!-- end screen-trainer -->
@@ -1810,13 +1852,15 @@ input:-webkit-autofill:focus {
 <div id="screen-dict" class="screen">
   <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
     <div style="position:relative;flex:1;min-width:200px;">
-      <input id="dict-search" type="text" placeholder="Поиск: parler, любить, -er…"
-        oninput="renderDict()"
-        style="width:100%;padding:12px 16px 12px 40px;background:var(--surface);border:2px solid var(--border);
+      <input id="dict-search" type="text" placeholder="Поиск: parler, любить, ira…"
+        oninput="renderDict();document.getElementById('dict-clear').style.display=this.value?'block':'none'"
+        style="width:100%;padding:12px 36px 12px 40px;background:var(--surface);border:2px solid var(--border);
                border-radius:10px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;
                outline:none;transition:border-color 0.2s;"
         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
       <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none">🔍</span>
+      <button id="dict-clear" onclick="document.getElementById('dict-search').value='';this.style.display='none';renderDict()"
+        style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:4px">✕</button>
     </div>
     <select class="select-control" id="dict-group" onchange="renderDict()">
       <option value="all">Все группы</option>
@@ -2148,6 +2192,11 @@ input:-webkit-autofill:focus {
       <button class="btn btn-secondary" onclick="learnAgain()" style="padding:12px">🔄 Показать снова</button>
       <button class="btn btn-primary" onclick="startLearnCheck()" style="padding:12px">✏️ Закрепить →</button>
     </div>
+    <div style="margin-top:8px;">
+      <button onclick="startPhrasesStep()" style="width:100%;background:none;border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;">
+        💬 Понял паттерн, сразу к фразам →
+      </button>
+    </div>
   </div>
 
   <!-- Step 3: Quick check -->
@@ -2212,9 +2261,11 @@ input:-webkit-autofill:focus {
   <div id="study-result-view" style="display:none;text-align:center;padding:24px 0;">
     <div style="font-size:3rem;margin-bottom:12px" id="result-emoji">✅</div>
     <div style="font-family:'Playfair Display',serif;font-size:1.4rem;margin-bottom:8px" id="result-title">Отлично!</div>
-    <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:28px" id="result-text">Глагол добавлен в расписание</div>
+    <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px" id="result-text">Глагол добавлен в расписание</div>
+    <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:24px" id="result-session-info"></div>
     <div style="display:flex;flex-direction:column;gap:10px;max-width:320px;margin:0 auto;">
-      <button class="btn btn-primary" onclick="startLearnSession()" style="padding:12px">▶ Изучить следующий</button>
+      <button class="btn btn-primary" id="result-next-btn" onclick="startLearnSession()" style="padding:12px">▶ Изучить следующий</button>
+      <button class="btn btn-secondary" onclick="goToTrainerFromStudy()" style="padding:12px">✏️ Закрепить в тренажёре →</button>
       <button class="btn btn-secondary" onclick="exitLearnSession()" style="padding:12px">← К списку</button>
     </div>
   </div>
@@ -2225,7 +2276,7 @@ input:-webkit-autofill:focus {
 <div id="screen-phrases" class="screen">
 
   <!-- Filters -->
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:center;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
     <select class="select-control" id="ph-group" onchange="renderPhrasesScreen()">
       <option value="all">Все группы</option>
       <option value="er">-ER глаголы</option>
@@ -2241,11 +2292,28 @@ input:-webkit-autofill:focus {
       <option value="imparfait">Imparfait</option>
       <option value="futur">Futur simple</option>
     </select>
-    <select class="select-control" id="ph-verb" onchange="renderPhrasesScreen()">
-      <option value="all">Все глаголы</option>
-    </select>
     <div id="ph-count" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto"></div>
   </div>
+
+  <!-- Search and verb selection -->
+  <div style="display:flex;gap:8px;margin-bottom:10px;">
+    <input type="text" id="ph-search" placeholder="🔍 Поиск глагола..." oninput="renderPhrasesVerbList()"
+      style="flex:1;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;outline:none"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    <button onclick="togglePhVerbSelect()" id="ph-select-btn" class="btn btn-secondary" style="padding:8px 12px;font-size:0.8rem;white-space:nowrap">☑ Выбрать</button>
+  </div>
+
+  <!-- Selected verbs bar -->
+  <div id="ph-selected-bar" style="display:none;background:var(--surface2);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;margin-bottom:10px;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="font-size:0.82rem;color:var(--accent)" id="ph-selected-label">Выбрано: 0</div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-primary" onclick="startPhrasesWithSelected()" style="padding:6px 12px;font-size:0.78rem">▶ Тренировать</button>
+      <button onclick="clearPhVerbSelection()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text-muted);cursor:pointer;font-size:0.78rem">✕</button>
+    </div>
+  </div>
+
+  <!-- Verb list (shown when searching or selecting) -->
+  <div id="ph-verb-list" style="display:none;max-height:180px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;"></div>
 
   <!-- Score -->
   <div class="score-display" style="margin-bottom:20px;">
@@ -2277,53 +2345,6 @@ input:-webkit-autofill:focus {
 </div>
 
 <!-- NUMBERS SCREEN -->
-<div id="screen-numbers" class="screen">
-
-  <!-- Settings bar -->
-  <div id="numbers-settings" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px;">
-    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:14px">Диапазон чисел</div>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <label style="font-size:0.82rem;color:var(--text-muted)">от</label>
-        <input id="num-from" type="number" value="0" min="0" max="999999" style="width:90px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <label style="font-size:0.82rem;color:var(--text-muted)">до</label>
-        <input id="num-to" type="number" value="100" min="1" max="999999" style="width:90px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,20)">0–20</button>
-      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,100)">0–100</button>
-      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,1000)">0–1000</button>
-      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(1000,10000)">1000–10000</button>
-      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,999999)">Любое</button>
-    </div>
-  </div>
-
-  <!-- Score -->
-  <div class="score-display" style="margin-bottom:20px;">
-    <div class="score-item"><div class="num score-good" id="nscore-good">0</div><div class="lbl">верно</div></div>
-    <div class="score-item"><div class="num score-bad" id="nscore-bad">0</div><div class="lbl">ошибок</div></div>
-    <div class="score-item"><div class="num score-streak" id="nscore-streak">0</div><div class="lbl">серия</div></div>
-  </div>
-
-  <!-- Card -->
-  <div class="trainer-card" id="num-card" style="min-height:180px;">
-    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px">Напиши словами по-французски</div>
-    <div id="num-display" style="font-family:'Playfair Display',serif;font-size:4rem;color:var(--text);line-height:1;margin-bottom:8px;">—</div>
-    <button id="num-speak-btn" onclick="speakCurrentNumber()" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;margin:0 auto;transition:all 0.2s">🔊</button>
-  </div>
-
-  <!-- Answer -->
-  <div class="answer-area" style="margin-top:16px;">
-    <input type="text" class="answer-input" id="num-input" inputmode="none" placeholder="ex: vingt-deux..." autocomplete="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter')checkNumber()">
-    <button class="btn btn-primary" onclick="checkNumber()">Проверить</button>
-  </div>
-  <div style="text-align:right;margin-top:6px"><button class="kb-toggle-btn" id="kb-toggle-num" onclick="toggleKbMode('num')">⌨ Своя клавиатура</button></div>
-  <div class="fr-keyboard" id="fr-kb-num"></div>
-  <div id="num-feedback" style="min-height:52px;display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
-</div>
 
 </main>
 
@@ -4531,7 +4552,11 @@ async function renderLeaderboard() {
   list.style.display = 'none';
 
   try {
-    const { data, error } = await sb.from('leaderboard').select('*');
+    const { data, error } = await sb.from('leaderboard')
+      .select('*')
+      .order('accuracy', { ascending: false })
+      .order('total_attempts', { ascending: false })
+      .limit(50);
     if (error) throw error;
 
     loading.style.display = 'none';
@@ -4542,13 +4567,20 @@ async function renderLeaderboard() {
       return;
     }
 
+    // Filter: only show users with 50+ attempts
+    const qualified = data.filter(r => (r.total_attempts || 0) >= 50);
+    const displayData = qualified.length > 0 ? qualified : data;
+
     const medals = ['🥇','🥈','🥉'];
 
-    list.innerHTML = data.map((row, i) => {
+    list.innerHTML = displayData.map((row, i) => {
       const isMe = row.username === currentProfile;
       const medal = medals[i] || `<span style="color:var(--text-muted);font-size:0.9rem">#${i+1}</span>`;
       const pct = row.accuracy || 0;
-      const color = pct >= 75 ? 'var(--good)' : pct >= 50 ? 'var(--warn)' : 'var(--bad)';
+      // Neutral color for low accuracy — red only for trainer feedback
+      const color = pct >= 75 ? 'var(--good)' : pct >= 50 ? 'var(--warn)' : 'var(--text-muted)';
+      // XP score
+      const xp = ((row.correct_answers || 0) * 10) + ((row.streak || 0) * 50);
 
       return `<div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:${isMe?'var(--surface2)':'var(--surface)'};border:1px solid ${isMe?'var(--accent)':'var(--border)'};border-radius:12px;margin-bottom:8px;">
         <div style="font-size:1.4rem;min-width:32px;text-align:center">${medal}</div>
@@ -4563,7 +4595,7 @@ async function renderLeaderboard() {
         </div>
         <div style="text-align:right;flex-shrink:0;">
           <div style="font-size:1.3rem;font-weight:600;color:${color}">${pct}%</div>
-          <div style="font-size:0.65rem;color:var(--text-muted)">точность</div>
+          <div style="font-size:0.65rem;color:var(--text-muted)">${xp} XP</div>
         </div>
       </div>`;
     }).join('');
@@ -5012,19 +5044,21 @@ function setTrainerMode(mode) {
   const vBtn = document.getElementById('mode-verbs-btn');
   const nBtn = document.getElementById('mode-nouns-btn');
   const pBtn = document.getElementById('mode-preps-btn');
+  const numBtn = document.getElementById('mode-nums-btn');
   const vDiv = document.getElementById('trainer-verbs-mode');
   const nDiv = document.getElementById('trainer-nouns-mode');
   const pDiv = document.getElementById('trainer-preps-mode');
+  const numDiv = document.getElementById('trainer-numbers-mode');
 
-  [vBtn,nBtn,pBtn].forEach(b => { if(b){b.style.background='none';b.style.color='var(--text-muted)';} });
-  [vDiv,nDiv,pDiv].forEach(d => { if(d) d.style.display='none'; });
+  [vBtn,nBtn,pBtn,numBtn].forEach(b => { if(b){b.style.background='none';b.style.color='var(--text-muted)';b.style.fontWeight='';} });
+  [vDiv,nDiv,pDiv,numDiv].forEach(d => { if(d) d.style.display='none'; });
 
   if (mode === 'verbs') {
-    vBtn.style.background='var(--accent)'; vBtn.style.color='#0e0e10';
+    vBtn.style.background='var(--accent)'; vBtn.style.color='#0e0e10'; vBtn.style.fontWeight='500';
     vDiv.style.display='block';
     if (frKbEnabled) showFrKb('main');
   } else if (mode === 'nouns') {
-    nBtn.style.background='var(--accent)'; nBtn.style.color='#0e0e10';
+    nBtn.style.background='var(--accent)'; nBtn.style.color='#0e0e10'; nBtn.style.fontWeight='500';
     nDiv.style.display='block';
     hideFrKb('main');
     nGood2=0; nBad2=0; nStreak2=0;
@@ -5033,7 +5067,7 @@ function setTrainerMode(mode) {
     document.getElementById('nscore2-streak').textContent='0';
     nounNextCard();
   } else if (mode === 'preps') {
-    pBtn.style.background='var(--accent)'; pBtn.style.color='#0e0e10';
+    pBtn.style.background='var(--accent)'; pBtn.style.color='#0e0e10'; pBtn.style.fontWeight='500';
     pDiv.style.display='block';
     hideFrKb('main');
     pGood=0; pBad=0; pStreak=0;
@@ -5041,6 +5075,14 @@ function setTrainerMode(mode) {
     document.getElementById('pscore-bad').textContent='0';
     document.getElementById('pscore-streak').textContent='0';
     prepNextCard();
+  } else if (mode === 'numbers') {
+    numBtn.style.background='var(--accent)'; numBtn.style.color='#0e0e10'; numBtn.style.fontWeight='500';
+    numDiv.style.display='block';
+    hideFrKb('main');
+    document.getElementById('nscore-good').textContent='0';
+    document.getElementById('nscore-bad').textContent='0';
+    document.getElementById('nscore-streak').textContent='0';
+    nextNumber();
   }
 }
 
@@ -5611,6 +5653,7 @@ async function renderHome() {
 // ════════════════════════════════════════════════
 let currentVerb = null, currentPronounIdx = null, currentTense = null;
 let sessionGood = 0, sessionBad = 0, sessionStreak = 0;
+let currentCardHinted = false;
 let reviewMode = false;
 let sessionCount = 0;
 
@@ -5909,6 +5952,7 @@ function renderCard() {
     ruleBtn.textContent = '💡 Правило';
     ruleBtn.dataset.penaltyApplied = '';
   }
+  currentCardHinted = false;
   // Restore controls that may have been hidden
   const fbEl = document.getElementById('feedback-row');
   if (fbEl) fbEl.style.display = '';
@@ -6006,6 +6050,15 @@ function normalize(s) {
     .replace(/'/g,"'").replace(/\s+/g,' ');
 }
 
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m+1}, (_, i) => Array.from({length: n+1}, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  return dp[m][n];
+}
+
 function checkAnswer() {
   if (!currentVerb) return;
   const input = document.getElementById('answer-input');
@@ -6022,8 +6075,15 @@ function checkAnswer() {
   const userNorm = normalize(userRaw);
   const isCorrect = userNorm === correctFull || userNorm === correctShort;
 
+  // Typo detection — levenshtein distance 1
+  const isTypo = !isCorrect && (
+    levenshtein(userNorm, correctFull) === 1 ||
+    levenshtein(userNorm, correctShort) === 1
+  );
+
   recordResult(isCorrect);
-  input.className = 'answer-input ' + (isCorrect ? 'correct' : 'wrong');
+  input.className = 'answer-input ' + (isCorrect ? 'correct' : isTypo ? '' : 'wrong');
+  if (isTypo) input.style.borderColor = 'var(--warn)';
   const ctxEl2 = document.getElementById('card-context');
   if (ctxEl2) ctxEl2.style.visibility = 'visible';
 
@@ -6032,6 +6092,9 @@ function checkAnswer() {
   if (isCorrect) {
     document.getElementById('card-context').style.visibility = 'visible';
     fb.innerHTML = `<div class="feedback-msg correct">✓ Верно!</div><button class="btn btn-primary" style="padding:8px 20px;font-size:0.85rem" onclick="resetTrainer()">Следующий →</button>`;
+  } else if (isTypo) {
+    fb.innerHTML = `<div style="color:var(--warn);font-size:0.9rem;font-weight:500">⚠ Опечатка! Правильно: <strong>${correct}</strong></div>
+      <button class="btn btn-primary" style="padding:8px 20px;font-size:0.85rem" onclick="resetTrainer()">Следующий →</button>`;
   } else {
     fb.innerHTML = `<div class="feedback-msg wrong">✗ Правильно: <strong>${correct}</strong></div><button class="btn btn-secondary" style="padding:8px 16px;font-size:0.8rem" onclick="resetTrainer()">Следующий</button>`;
     const _sb = document.createElement('button');
@@ -6039,7 +6102,6 @@ function checkAnswer() {
     _sb.style.cssText = 'background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;cursor:pointer;color:var(--text-muted);font-size:0.85rem';
     _sb.onclick = (()=>{const _c=correct;return ()=>speak(_c);})();
     fb.appendChild(_sb);
-    // Shake animation
     const card = document.getElementById('trainer-card');
     if (card) { card.classList.add('shake'); setTimeout(() => card.classList.remove('shake'), 400); }
     if (navigator.vibrate) navigator.vibrate([30, 10, 30]);
@@ -6053,8 +6115,13 @@ function revealRecall() {
   speak(getCorrectAnswer());
 }
 
-function recallResult(knew) {
-  recordResult(knew);
+function recallResult(grade) {
+  // Grade: 1=forgot, 3=hard, 4=easy
+  const correct = grade >= 3;
+  recordResult(correct);
+  if (currentVerb && sbUser) {
+    updateSRS(currentVerb.id, grade >= 3, grade);
+  }
   setTimeout(resetTrainer, 400);
 }
 
@@ -6083,14 +6150,14 @@ async function saveSRS(s) {
   }
 }
 
-function updateSRS(verbId, correct) {
+function updateSRS(verbId, correct, grade) {
   if (!verbId) return;
-  const grade = correct ? 4 : 1;
+  const effectiveGrade = grade !== undefined ? grade : (correct ? 4 : 1);
 
   // Read from localStorage cache — no SELECT needed
   const srs = loadSRS();
   const card = srs[verbId] || null;
-  const updated = sm2Update(card, grade);
+  const updated = sm2Update(card, effectiveGrade);
 
   // Update localStorage cache immediately
   srs[verbId] = updated;
@@ -6178,21 +6245,23 @@ function getSRSDueVerbs(pool) {
 async function recordResult(correct) {
   if (!currentVerb) return;
 
-  // Update localStorage
+  // If hint was used — count as wrong regardless of answer
+  const effectiveCorrect = correct && !currentCardHinted;
+  currentCardHinted = false; // reset flag
+
   const stats = loadStats();
   const key = currentVerb.id;
   if (!stats[key]) stats[key] = { total: 0, correct: 0 };
   stats[key].total++;
-  if (correct) stats[key].correct++;
+  if (effectiveCorrect) stats[key].correct++;
 
   const tkey = 'tense_' + currentTense;
   if (!stats[tkey]) stats[tkey] = { total: 0, correct: 0 };
   stats[tkey].total++;
-  if (correct) stats[tkey].correct++;
+  if (effectiveCorrect) stats[tkey].correct++;
 
   localStorage.setItem(profileKey('stats'), JSON.stringify(stats));
 
-  // Save single row to Supabase immediately
   if (sbUser) {
     sb.from('stats').upsert(
       { user_id: sbUser.id, key, total: stats[key].total, correct: stats[key].correct },
@@ -6402,7 +6471,11 @@ function renderDict() {
     verbs = verbs.filter(v =>
       v.inf.toLowerCase().includes(query) ||
       v.meaning.toLowerCase().includes(query) ||
-      v.group === query.replace('-','')
+      v.group === query.replace('-','') ||
+      // Reverse search — find verb by any conjugated form
+      (v.conj && Object.values(v.conj).some(tenseForms =>
+        Array.isArray(tenseForms) && tenseForms.some(form => form && form.toLowerCase().includes(query))
+      ))
     );
   }
   if (sort === 'alpha') verbs = [...verbs].sort((a,b) => a.inf.localeCompare(b.inf, 'fr'));
@@ -6515,6 +6588,19 @@ function selectDictVerb(id) {
   const pctColor = pct === null ? 'var(--text-muted)' : pct >= 75 ? 'var(--good)' : pct >= 50 ? 'var(--warn)' : 'var(--bad)';
   const pctLabel = pct !== null ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.82rem;color:${pctColor}">${pct}% верно (${s.total} попыток)</span>` : '<span style="font-size:0.78rem;color:var(--text-muted)">ещё не тренировался</span>';
 
+  // SRS status
+  const srsCard = loadSRS()[verb.id];
+  let srsLabel = '';
+  if (!srsCard) {
+    srsLabel = '<span style="font-size:0.78rem;color:var(--text-dim)">⚪ Новое слово</span>';
+  } else if (srsCard.interval >= 14) {
+    srsLabel = `<span style="font-size:0.78rem;color:var(--good)">🟢 Изучено · интервал ${srsCard.interval} дн.</span>`;
+  } else if (srsCard.interval >= 3) {
+    srsLabel = `<span style="font-size:0.78rem;color:var(--warn)">🟡 В процессе · интервал ${srsCard.interval} дн.</span>`;
+  } else {
+    srsLabel = `<span style="font-size:0.78rem;color:var(--text-muted)">🔵 Начато · повтор ${srsCard.dueDate || 'скоро'}</span>`;
+  }
+
   document.getElementById('dict-detail').innerHTML = `
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
       <div>
@@ -6530,7 +6616,8 @@ function selectDictVerb(id) {
         </div>
       </div>
       <div style="text-align:right">
-        ${pctLabel}
+        ${srsLabel}
+        <br><span style="display:inline-block;margin-top:4px">${pctLabel}</span>
         <br><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="startTrainerVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">▶ Тренировать</button>
           <button class="btn btn-secondary" onclick="studyOneVerb('${verb.id}');showScreen('study')" style="padding:7px 14px;font-size:0.75rem">🎧 Изучить</button>
@@ -6841,22 +6928,13 @@ function toggleRule() {
     btn.style.borderColor = 'var(--warn)';
     btn.style.color = 'var(--warn)';
     btn.textContent = '💡 Правило (−1)';
-    // Count as hint — record penalty once per card
     if (!btn.dataset.penaltyApplied) {
       btn.dataset.penaltyApplied = '1';
       sessionBad++;
       sessionStreak = 0;
       document.getElementById('score-bad').textContent = sessionBad;
       document.getElementById('score-streak').textContent = sessionStreak;
-      // Record as failed attempt in stats
-      if (currentVerb) {
-        const stats = loadStats();
-        const key = currentVerb.id;
-        if (!stats[key]) stats[key] = {total:0, correct:0};
-        stats[key].total++;
-        // correct stays same — net effect lowers accuracy
-        saveStats(stats);
-      }
+      currentCardHinted = true; // mark — will count as wrong in recordResult
     }
   } else {
     box.style.display = 'none';
@@ -7048,6 +7126,21 @@ function learnVerbStart(verbId) {
   renderLearnCard();
 }
 
+function highlightEnding(inf, form) {
+  // Find common prefix between infinitive stem and form
+  const stem = inf.replace(/(?:er|ir|re|oir)$/i, '');
+  if (form.startsWith(stem) && stem.length > 1) {
+    const ending = form.slice(stem.length);
+    return `${stem}<span style="color:var(--accent);font-weight:500">${ending}</span>`;
+  }
+  // Fallback: highlight last 2-3 chars as ending
+  const cut = form.length > 4 ? form.length - 3 : form.length - 2;
+  if (cut > 0) {
+    return `${form.slice(0, cut)}<span style="color:var(--accent);font-weight:500">${form.slice(cut)}</span>`;
+  }
+  return form;
+}
+
 function renderLearnCard() {
   const v = learnVerb;
   const GROUP_NAMES = {er:'1-я группа (-ER)',ir:'2-я группа (-IR)',re:'3-я группа (-RE)',irr:'Неправильный',ref:'Возвратный'};
@@ -7062,7 +7155,7 @@ function renderLearnCard() {
   if (table) table.innerHTML = pronouns.map((p, i) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:6px;">
       <span style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:var(--accent);min-width:52px">${p}</span>
-      <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${forms[i] || '—'}</span>
+      <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem">${highlightEnding(v.inf, forms[i] || '—')}</span>
       <button onclick="speak('${p} ${forms[i] || ''}')" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:0.8rem;margin-left:auto;padding:2px 4px">🔊</button>
     </div>`).join('');
 
@@ -7223,20 +7316,8 @@ function checkPhraseAnswer() {
 async function finishLearn() {
   const interval = (learnCheckErrors === 0 && learnPhraseErrors === 0) ? 2 : 1;
 
-  // Record in stats - accumulate, don't overwrite
-  const totalAttempts = 6 + learnCheckErrors;
-  const correctAttempts = 6;
-  const stats = loadStats();
-  if (!stats[learnVerb.id]) stats[learnVerb.id] = { total: 0, correct: 0 };
-  stats[learnVerb.id].total += totalAttempts;
-  stats[learnVerb.id].correct += correctAttempts;
-  localStorage.setItem(profileKey('stats'), JSON.stringify(stats));
-  if (sbUser) {
-    await sb.from('stats').upsert(
-      { user_id: sbUser.id, key: learnVerb.id, total: stats[learnVerb.id].total, correct: stats[learnVerb.id].correct },
-      { onConflict: 'user_id,key' }
-    );
-  }
+  // Note: stats are NOT recorded here — only real trainer attempts count
+  // SRS progress is recorded below
   const srs = loadSRS();
   const existing = srs[learnVerb.id];
   // Only create/update if no existing card or existing interval is smaller
@@ -7265,15 +7346,21 @@ async function finishLearn() {
 
   studyQueueIdx++;
   const hasNext = studyQueueIdx < studyQueue.length;
-  const errText = (learnCheckErrors + learnPhraseErrors) > 0 ? ` (${learnCheckErrors + learnPhraseErrors} ошибок)` : '';
-  document.getElementById('result-text').textContent = hasNext
-    ? `${learnVerb.inf} добавлен${errText}. Осталось: ${studyQueue.length - studyQueueIdx}`
-    : `${learnVerb.inf} добавлен${errText}. Повторить через ${interval} дн.`;
+  const errText = (learnCheckErrors + learnPhraseErrors) > 0 ? ` · ${learnCheckErrors + learnPhraseErrors} ошибок` : ' · без ошибок';
+  document.getElementById('result-text').textContent = `${learnVerb.inf} добавлен в расписание на ${interval} дн.`;
 
-  const nextBtn = document.querySelector('#study-result-view .btn-primary');
+  // Session info
+  const sessionInfo = document.getElementById('result-session-info');
+  if (sessionInfo) {
+    const done = studyQueueIdx;
+    const total = studyQueue.length;
+    sessionInfo.textContent = total > 1 ? `Изучено ${done} из ${total}${errText}` : errText.trim().replace(' · ', '');
+  }
+
+  const nextBtn = document.getElementById('result-next-btn');
   if (nextBtn) {
     if (hasNext) {
-      nextBtn.textContent = '▶ Следующий в очереди';
+      nextBtn.textContent = `▶ Следующий (${studyQueue.length - studyQueueIdx} осталось)`;
       nextBtn.onclick = () => learnVerbStart(studyQueue[studyQueueIdx].id);
     } else {
       nextBtn.textContent = '▶ Изучить следующий';
@@ -7295,7 +7382,20 @@ async function finishLearn() {
 
 }
 
-function backToLearnCard() { showLearnView('study-card-view'); }
+function goToTrainerFromStudy() {
+  // Filter trainer to recently studied verbs
+  const ids = studyQueue.slice(0, studyQueueIdx).map(v => v.id);
+  if (ids.length) {
+    selectedVerbIds = new Set(ids);
+    const banner = document.getElementById('custom-selection-banner');
+    if (banner) banner.style.display = 'flex';
+    const label = document.getElementById('custom-selection-label');
+    if (label) label.textContent = `📚 Недавно изученные: ${ids.length} глагол${ids.length===1?'':ids.length<5?'а':'ов'}`;
+  }
+  showScreen('trainer');
+  setTrainerMode('verbs');
+  resetTrainer();
+}
 
 function exitLearnSession() {
   learnVerb = null;
@@ -7313,14 +7413,103 @@ function showLearnView(id) {
 let phGood = 0, phBad = 0, phStreak = 0;
 let currentPhrase = null;
 
+let phSelectMode = false;
+let phSelectedVerbs = new Set();
+
+function togglePhVerbSelect() {
+  phSelectMode = !phSelectMode;
+  const btn = document.getElementById('ph-select-btn');
+  if (btn) {
+    btn.style.background = phSelectMode ? 'var(--accent)' : '';
+    btn.style.color = phSelectMode ? '#0e0e10' : '';
+  }
+  const list = document.getElementById('ph-verb-list');
+  if (list) list.style.display = phSelectMode ? 'block' : 'none';
+  if (phSelectMode) renderPhrasesVerbList();
+  else { phSelectedVerbs.clear(); updatePhSelectedBar(); }
+}
+
+function renderPhrasesVerbList() {
+  const search = document.getElementById('ph-search')?.value.trim().toLowerCase() || '';
+  const group = document.getElementById('ph-group')?.value || 'all';
+  const list = document.getElementById('ph-verb-list');
+  if (!list) return;
+
+  // Show list when searching
+  if (search) list.style.display = 'block';
+  else if (!phSelectMode) { list.style.display = 'none'; return; }
+
+  const verbIds = [...new Set(PHRASES.map(p => p.verbId))];
+  let verbs = verbIds.map(id => VERBS.find(v => v.id === id)).filter(Boolean);
+  if (group !== 'all') verbs = verbs.filter(v => v.group === group);
+  if (search) verbs = verbs.filter(v => v.inf.includes(search) || v.meaning.toLowerCase().includes(search));
+  verbs.sort((a,b) => a.inf.localeCompare(b.inf, 'fr'));
+
+  list.innerHTML = verbs.slice(0, 30).map(v => {
+    const sel = phSelectedVerbs.has(v.id);
+    return `<div onclick="togglePhVerbItem('${v.id}')"
+      style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);background:${sel?'var(--surface2)':''}">
+      ${phSelectMode ? `<div style="width:16px;height:16px;border:2px solid ${sel?'var(--accent)':'var(--border)'};border-radius:3px;background:${sel?'var(--accent)':'none'};display:flex;align-items:center;justify-content:center;color:#0e0e10;font-size:0.7rem;flex-shrink:0">${sel?'✓':''}</div>` : ''}
+      <span style="font-family:'Playfair Display',serif;font-style:italic">${v.inf}</span>
+      <span style="font-size:0.78rem;color:var(--text-muted)">${v.meaning}</span>
+    </div>`;
+  }).join('');
+}
+
+function togglePhVerbItem(id) {
+  if (phSelectMode) {
+    if (phSelectedVerbs.has(id)) phSelectedVerbs.delete(id);
+    else phSelectedVerbs.add(id);
+    updatePhSelectedBar();
+    renderPhrasesVerbList();
+  } else {
+    // Direct selection — filter by this verb
+    document.getElementById('ph-search').value = '';
+    document.getElementById('ph-verb-list').style.display = 'none';
+    phSelectedVerbs.clear();
+    phSelectedVerbs.add(id);
+    startPhrasesWithSelected();
+  }
+}
+
+function updatePhSelectedBar() {
+  const bar = document.getElementById('ph-selected-bar');
+  const label = document.getElementById('ph-selected-label');
+  if (!bar) return;
+  if (phSelectedVerbs.size > 0) {
+    bar.style.display = 'flex';
+    label.textContent = `Выбрано: ${phSelectedVerbs.size}`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearPhVerbSelection() {
+  phSelectedVerbs.clear();
+  phSelectMode = false;
+  const btn = document.getElementById('ph-select-btn');
+  if (btn) { btn.style.background = ''; btn.style.color = ''; }
+  const list = document.getElementById('ph-verb-list');
+  if (list) list.style.display = 'none';
+  updatePhSelectedBar();
+  renderPhrasesScreen();
+}
+
+function startPhrasesWithSelected() {
+  if (!phSelectedVerbs.size) return;
+  document.getElementById('ph-verb-list').style.display = 'none';
+  document.getElementById('ph-search').value = '';
+  renderPhrasesScreen();
+}
+
 function getFilteredPhrases() {
   const group  = document.getElementById('ph-group')?.value  || 'all';
   const tense  = document.getElementById('ph-tense')?.value  || 'all';
-  const verbId = document.getElementById('ph-verb')?.value   || 'all';
   return PHRASES.filter(p => {
-    if (tense  !== 'all' && p.tense  !== tense)  return false;
-    if (verbId !== 'all' && p.verbId !== verbId) return false;
-    if (group  !== 'all') {
+    if (tense !== 'all' && p.tense !== tense) return false;
+    // If verbs selected — filter by them
+    if (phSelectedVerbs.size > 0 && !phSelectedVerbs.has(p.verbId)) return false;
+    if (group !== 'all') {
       const verb = VERBS.find(v => v.id === p.verbId);
       if (!verb || verb.group !== group) return false;
     }
@@ -7329,17 +7518,6 @@ function getFilteredPhrases() {
 }
 
 function renderPhrasesScreen() {
-  const group = document.getElementById('ph-group')?.value || 'all';
-  const verbSel = document.getElementById('ph-verb');
-  if (verbSel) {
-    const verbs = [...new Set(PHRASES.map(p => p.verbId))]
-      .map(id => VERBS.find(v => v.id === id))
-      .filter(v => v && (group === 'all' || v.group === group))
-      .sort((a,b) => a.inf.localeCompare(b.inf, 'fr'));
-    const cur = verbSel.value;
-    verbSel.innerHTML = '<option value="all">Все глаголы</option>' +
-      verbs.map(v => `<option value="${v.id}" ${v.id===cur?'selected':''}>${v.inf}</option>`).join('');
-  }
   const pool = getFilteredPhrases();
   const cnt = document.getElementById('ph-count');
   if (cnt) cnt.textContent = pool.length + ' фраз';
