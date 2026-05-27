@@ -1995,7 +1995,7 @@ input:-webkit-autofill:focus {
         <h2 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:4px">🎧 Изучить</h2>
         <div style="font-size:0.78rem;color:var(--text-muted)">Познакомься с новым глаголом, потом закрепи в тренажёре</div>
       </div>
-      <button id="add-verb-btn" onclick="showAddVerbModal()" class="btn btn-secondary" style="display:none;padding:7px 14px;font-size:0.8rem;white-space:nowrap">➕ Добавить глагол</button>
+      <button id="add-verb-btn" onclick="showAddVerbModal()" class="btn btn-secondary" style="padding:7px 14px;font-size:0.8rem;white-space:nowrap">➕ Добавить глагол</button>
     </div><!-- end header flex -->
 
   <!-- Add verb modal -->
@@ -2319,6 +2319,7 @@ input:-webkit-autofill:focus {
 // SUPABASE
 // ════════════════════════════════════════════════
 const SUPABASE_URL = 'https://dhimxbkjvowmwrosgcpb.supabase.co';
+const ADMIN_USERNAME = 'boikot5225';
 const SUPABASE_KEY = 'sb_publishable_8H-4I4IDKQG_Vr-FBZ7ESQ_ZH5PSHZv';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let sbUser = null;
@@ -5321,6 +5322,9 @@ function loginProfile(name) {
   document.getElementById('screen-profile').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   hideLoading();
+  // Show admin buttons
+  const addVerbBtn = document.getElementById('add-verb-btn');
+  if (addVerbBtn) addVerbBtn.style.display = name.toLowerCase() === ADMIN_USERNAME ? 'inline-block' : 'none';
   startBackgroundSync();
   resetTrainer();
   showScreen('home');
@@ -7504,8 +7508,6 @@ function getFilteredPhrases() {
 // ════════════════════════════════════════════════
 // GENERATE PHRASES via DeepSeek
 // ════════════════════════════════════════════════
-const ADMIN_USERNAME = 'boikot5225';
-
 function showAddVerbModal() {
   document.getElementById('add-verb-modal').style.display = 'flex';
   document.getElementById('add-verb-input').value = '';
