@@ -1803,7 +1803,7 @@ input:-webkit-autofill:focus {
   <div style="text-align:right;margin-top:6px"><button class="kb-toggle-btn" id="kb-toggle-num" onclick="toggleKbMode('num')">⌨ Своя клавиатура</button></div>
   <div class="fr-keyboard" id="fr-kb-num"></div>
   <div id="num-feedback" style="min-height:52px;display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
-  </div>
+  </div><!-- end trainer-numbers-mode -->
 
 </div><!-- end screen-trainer -->
 
@@ -2339,7 +2339,10 @@ input:-webkit-autofill:focus {
      >
     <button class="btn btn-primary" onclick="checkPhrase()">Проверить</button>
   </div>
-  <div style="text-align:right;margin-top:6px"><button class="kb-toggle-btn" id="kb-toggle-ph" onclick="toggleKbMode('ph')">⌨ Своя клавиатура</button></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+    <button onclick="phraseHint()" style="background:none;border:1px solid var(--border);border-radius:16px;padding:4px 12px;font-size:0.72rem;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">💡 Подсказка</button>
+    <button class="kb-toggle-btn" id="kb-toggle-ph" onclick="toggleKbMode('ph')">⌨ Своя клавиатура</button>
+  </div>
   <div class="fr-keyboard" id="fr-kb-ph"></div>
   <div id="ph-feedback" style="min-height:52px;display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
 </div>
@@ -4538,7 +4541,8 @@ function toggleFrKb(kbId) {
 // ════════════════════════════════════════════════
 const BN_MAP = {
   home:'bn-home', trainer:'bn-trainer', grammar:'bn-grammar',
-  study:'bn-study', numbers:'bn-numbers', dict:'bn-more', stats:'bn-more', groups:'bn-more', phrases:'bn-more'
+  study:'bn-study', numbers:'bn-numbers', dict:'bn-more', stats:'bn-more',
+  groups:'bn-more', phrases:'bn-more', leaderboard:'bn-more', changelog:'bn-more'
 };
 
 // ════════════════════════════════════════════════
@@ -5345,8 +5349,12 @@ function loginProfile(name) {
   document.getElementById('main-app').style.display = 'block';
   startBackgroundSync();
   resetTrainer();
-  renderHome();
-  setTimeout(() => renderHome(), 2000);
+  // Wait for browser to paint before rendering home screen
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      showScreen('home');
+    });
+  });
 }
 
 function logoutProfile() {
@@ -5511,10 +5519,9 @@ function showScreen(id) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   const target = document.getElementById('screen-' + id);
   if (target) { target.classList.add('active'); target.style.display = ''; }
+  const tabName = {home:'Главная', grammar:'Правила', trainer:'Тренажёр', study:'Изучить', stats:'Статистика', dict:'Словарь', leaderboard:'Лидерборд'}[id];
   document.querySelectorAll('.nav-tab').forEach(t => {
-    if (t.textContent.includes({home:'Главная',grammar:'Грамматика',trainer:'Тренажёр',study:'Изучить',stats:'Статистика',dict:'Словарь',groups:'Группы',numbers:'Числа',phrases:'Фразы',changelog:'Обновления',leaderboard:'Лидерборд'}[id] || '')) {
-      t.classList.add('active');
-    }
+    if (tabName && t.textContent.includes(tabName)) t.classList.add('active');
   });
   // Always re-render data screens to pick up latest localStorage
   updateBottomNav(id);
@@ -5526,14 +5533,14 @@ function showScreen(id) {
     if (listWrap) listWrap.style.display = 'block';
     dictSelected = null;
   }
-  if (id === 'home') renderHome();
-  if (id === 'stats') renderStats();
-  if (id === 'dict') renderDict();
-  if (id === 'groups') { renderGroupsHome(); backToGroups(); }
-  if (id === 'numbers') renderNumbersScreen();
-  if (id === 'study') { if (typeof renderStudyScreen === 'function') renderStudyScreen(); }
-  if (id === 'phrases') renderPhrasesScreen();
-  if (id === 'leaderboard') renderLeaderboard();
+  if (id === 'home') renderHome().catch(e => console.error('renderHome:', e));
+  if (id === 'stats') renderStats().catch(e => console.error('renderStats:', e));
+  if (id === 'dict') renderDict().catch(e => console.error('renderDict:', e));
+  if (id === 'groups') { try { renderGroupsHome(); backToGroups(); } catch(e) { console.error(e); } }
+  if (id === 'numbers') { try { renderNumbersScreen(); } catch(e) {} }
+  if (id === 'study') { if (typeof renderStudyScreen === 'function') renderStudyScreen().catch(e => console.error('renderStudyScreen:', e)); }
+  if (id === 'phrases') renderPhrasesScreen().catch(e => console.error('renderPhrasesScreen:', e));
+  if (id === 'leaderboard') renderLeaderboard().catch(e => console.error('renderLeaderboard:', e));
   // Show virtual keyboard for input screens
   if (frKbEnabled) {
     const kbMap = {trainer:'main', groups:'grp', phrases:'ph', numbers:'num'};
@@ -5559,8 +5566,10 @@ function setGrammar(key) {
 async function renderHome() {
   const srs = loadSRS();
 
-  // Sync stats from Supabase to localStorage cache first
-  await syncStatsFromCloud();
+  // Show immediately with cached data, then sync in background
+  // This prevents black screen while waiting for Supabase
+  const _renderWithStats = async (skipSync) => {
+    if (!skipSync) await syncStatsFromCloud();
 
   // Read stats from cache
   let stats = loadStats();
@@ -5646,6 +5655,12 @@ async function renderHome() {
         </div>`;
     }
   }
+  }; // end _renderWithStats
+
+  // Render immediately with local cache (no network = no black screen)
+  await _renderWithStats(true);
+  // Refresh from Supabase silently in background
+  _renderWithStats(false).catch(e => {});
 }
 
 // ════════════════════════════════════════════════
@@ -6460,7 +6475,8 @@ function setDictLayout() {
   }
 }
 
-function renderDict() {
+async function renderDict() {
+  if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
   const query = (document.getElementById('dict-search')?.value || '').toLowerCase().trim();
   const group = document.getElementById('dict-group')?.value || 'all';
   const sort  = document.getElementById('dict-sort')?.value || 'alpha';
@@ -7517,7 +7533,9 @@ function getFilteredPhrases() {
   });
 }
 
-function renderPhrasesScreen() {
+async function renderPhrasesScreen() {
+  if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
+  if (!PHRASES_LOADED && sbUser) await loadPhrasesFromCloud();
   const pool = getFilteredPhrases();
   const cnt = document.getElementById('ph-count');
   if (cnt) cnt.textContent = pool.length + ' фраз';
@@ -7534,7 +7552,22 @@ function nextPhrase() {
     document.getElementById('ph-sentence').textContent = 'Нет фраз для выбранных фильтров';
     return;
   }
-  currentPhrase = pool[Math.floor(Math.random() * pool.length)];
+
+  // Weighted random — worse phrases appear more often
+  const stats = loadStats();
+  const weights = pool.map(p => {
+    const s = stats['ph_item_' + p.id];
+    if (!s || s.total === 0) return 3; // new phrase — medium weight
+    const acc = s.correct / s.total;
+    if (acc < 0.5) return 5;  // struggling — show more
+    if (acc < 0.8) return 2;  // ok
+    return 1;                  // mastered — show less
+  });
+  const total = weights.reduce((a,b) => a+b, 0);
+  let r = Math.random() * total;
+  let idx = 0;
+  for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) { idx = i; break; } }
+  currentPhrase = pool[idx];
   const verb = VERBS.find(v => v.id === currentPhrase.verbId);
   const badge = document.getElementById('ph-badge');
   if (badge && verb) {
@@ -7551,6 +7584,15 @@ function nextPhrase() {
   const inp = document.getElementById('ph-input');
   inp.value = ''; inp.className = 'answer-input'; inp.dataset.answered = '0'; inp.focus();
   document.getElementById('ph-feedback').innerHTML = '';
+}
+
+function phraseHint() {
+  if (!currentPhrase) return;
+  const half = currentPhrase.answer.substring(0, Math.ceil(currentPhrase.answer.length * 0.5));
+  const fb = document.getElementById('ph-feedback');
+  fb.innerHTML = `<div style="font-family:'IBM Plex Mono',monospace;font-size:0.9rem;color:var(--warn)">💡 ${half}...</div>`;
+  phStreak = 0;
+  document.getElementById('phscore-streak').textContent = phStreak;
 }
 
 function checkPhrase() {
@@ -7587,9 +7629,9 @@ function checkPhrase() {
   document.getElementById('phscore-good').textContent   = phGood;
   document.getElementById('phscore-bad').textContent    = phBad;
   document.getElementById('phscore-streak').textContent = phStreak;
-  if (currentPhrase.verbId) {
+  if (currentPhrase.id) {
     const stats = loadStats();
-    const key = 'ph_' + currentPhrase.verbId;
+    const key = 'ph_item_' + currentPhrase.id;
     if (!stats[key]) stats[key] = {total:0,correct:0};
     stats[key].total++;
     if (isCorrect) stats[key].correct++;
