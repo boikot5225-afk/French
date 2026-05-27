@@ -2448,6 +2448,11 @@ async function sbLoadMeta() {
 sb.auth.getSession().then(async ({ data }) => {
   if (data.session) {
     sbUser = data.session.user;
+    // Show loading so user sees something instead of black screen
+    const overlay = document.getElementById('loading-overlay');
+    const txt = document.getElementById('loading-text');
+    if (overlay) { overlay.style.display = 'flex'; }
+    if (txt) txt.textContent = 'Восстанавливаем сессию...';
     try {
       const [profile, , cloudStats, cloudSRS, cloudMeta] = await Promise.all([
         sbGetProfile(), loadVerbsFromCloud(), loadPhrasesFromCloud(), sbLoadStats(), sbLoadSRS(), sbLoadMeta()
@@ -2461,8 +2466,13 @@ sb.auth.getSession().then(async ({ data }) => {
         if (cloudMeta)
           localStorage.setItem('conj_' + profile.username.toLowerCase() + '_meta', JSON.stringify(cloudMeta));
         loginProfile(profile.username);
+      } else {
+        if (overlay) overlay.style.display = 'none';
       }
-    } catch(e) { console.error('Session restore error:', e); }
+    } catch(e) {
+      console.error('Session restore error:', e);
+      if (overlay) overlay.style.display = 'none';
+    }
   }
 });
 
@@ -5347,6 +5357,7 @@ function loginProfile(name) {
   if (brand) brand.innerHTML = 'conjugaison <span style="font-size:0.65rem;opacity:0.6;font-style:normal;margin-left:6px">' + name + '</span>';
   document.getElementById('screen-profile').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
+  hideLoading();
   startBackgroundSync();
   resetTrainer();
   // Wait for browser to paint before rendering home screen
@@ -5564,103 +5575,96 @@ function setGrammar(key) {
 // HOME
 // ════════════════════════════════════════════════
 async function renderHome() {
-  const srs = loadSRS();
+  // ── helper: safely set text of an element by id ──
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setHTML = (id, val) => { const el = document.getElementById(id); if (el) el.innerHTML = val; };
+  const show    = (id, html) => { const el = document.getElementById(id); if (el) { el.style.display = 'block'; if (html !== undefined) el.innerHTML = html; } };
 
-  // Show immediately with cached data, then sync in background
-  // This prevents black screen while waiting for Supabase
-  const _renderWithStats = async (skipSync) => {
-    if (!skipSync) await syncStatsFromCloud();
+  // ── 1. Paint immediately from localStorage (zero network) ──
+  const paintFromCache = () => {
+    const stats = loadStats();
+    const meta  = loadMeta();
+    const srsLocal = loadSRS();
 
-  // Read stats from cache
-  let stats = loadStats();
+    let vTotal = 0, vCorrect = 0, vSeen = new Set();
+    let nTotal = 0, nCorrect = 0, nSeen = new Set();
+    Object.entries(stats).forEach(([k, v]) => {
+      if (k.startsWith('noun_')) {
+        nTotal += v.total || 0; nCorrect += v.correct || 0; nSeen.add(k.replace('noun_',''));
+      } else if (!k.startsWith('tense_') && !k.startsWith('prep_') && !k.startsWith('ph_')) {
+        vTotal += v.total || 0; vCorrect += v.correct || 0; vSeen.add(k);
+      }
+    });
 
-  // Read meta from Supabase if logged in
-  let meta = {};
-  if (sbUser) {
-    try {
-      const { data } = await sb.from('meta').select('*').eq('user_id', sbUser.id).maybeSingle();
-      if (data) meta = { streak: data.streak, bestStreak: data.best_streak, lastActive: data.last_active };
-    } catch(e) {}
-  } else {
-    meta = loadMeta();
-  }
+    setText('hs-verbs',      vSeen.size);
+    setText('hs-total',      vTotal);
+    setText('hs-pct',        vTotal > 0 ? Math.round(vCorrect/vTotal*100) + '%' : '—');
+    setText('hs-streak',     meta.streak || 0);
+    setText('hs-nouns',      nSeen.size);
+    setText('hs-noun-total', nTotal);
+    setText('hs-noun-pct',   nTotal > 0 ? Math.round(nCorrect/nTotal*100) + '%' : '—');
 
-  // Verb stats (exclude noun_, tense_, prep_, ph_ keys)
-  let vTotal = 0, vCorrect = 0, vSeen = new Set();
-  let nTotal = 0, nCorrect = 0, nSeen = new Set();
-
-  Object.entries(stats).forEach(([k, v]) => {
-    if (k.startsWith('noun_')) {
-      nTotal += v.total || 0; nCorrect += v.correct || 0; nSeen.add(k.replace('noun_',''));
-    } else if (!k.startsWith('tense_') && !k.startsWith('prep_') && !k.startsWith('ph_')) {
-      vTotal += v.total || 0; vCorrect += v.correct || 0; vSeen.add(k);
-    }
-  });
-
-  document.getElementById('hs-verbs').textContent = vSeen.size;
-  document.getElementById('hs-total').textContent = vTotal;
-  document.getElementById('hs-pct').textContent = vTotal > 0 ? Math.round(vCorrect/vTotal*100) + '%' : '—';
-  document.getElementById('hs-streak').textContent = meta.streak || 0;
-  document.getElementById('hs-nouns').textContent = nSeen.size;
-  document.getElementById('hs-noun-total').textContent = nTotal;
-  document.getElementById('hs-noun-pct').textContent = nTotal > 0 ? Math.round(nCorrect/nTotal*100) + '%' : '—';
-
-  // SRS widget - read from Supabase
-  let due = 0;
-  if (sbUser) {
-    try {
-      const { data } = await sb.from('srs')
-        .select('verb_id')
-        .eq('user_id', sbUser.id)
-        .lte('due_date', todayStr());
-      due = data ? data.length : 0;
-    } catch(e) {}
-  } else {
-    const srs = loadSRS();
-    due = VERBS.filter(v => { const c = srs[v.id]; return c && c.dueDate <= todayStr(); }).length;
-  }
-  let knownCount = 0;
-  if (sbUser) {
-    try {
-      const { data } = await sb.from('srs').select('verb_id').eq('user_id', sbUser.id);
-      knownCount = data ? data.length : 0;
-    } catch(e) { knownCount = Object.keys(loadSRS()).length; }
-  } else {
-    knownCount = Object.keys(loadSRS()).length;
-  }
-  const newCount = Math.max(0, VERBS.length - knownCount);
-
-  const srsWidget = document.getElementById('srs-widget');
-  if (srsWidget) {
-    if (due > 0) {
+    // SRS from local cache
+    const due = VERBS.filter(v => { const c = srsLocal[v.id]; return c && c.dueDate <= todayStr(); }).length;
+    const knownCount = Object.keys(srsLocal).length;
+    const newCount = Math.max(0, VERBS.length - knownCount);
+    const srsWidget = document.getElementById('srs-widget');
+    if (srsWidget) {
       srsWidget.style.display = 'block';
-      srsWidget.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:4px">📅 Повторение сегодня</div>
-            <div style="font-size:1.8rem;font-weight:600;color:var(--text)">${due}</div>
-            <div style="font-size:0.78rem;color:var(--text-muted)">глагол${due===1?'':due<5?'а':'ов'} ждут повторения</div>
-          </div>
-          <button class="btn btn-primary" onclick="startSRSReview()" style="white-space:nowrap">Повторить →</button>
-        </div>`;
-    } else {
-      srsWidget.style.display = 'block';
-      srsWidget.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;">
-          <div style="font-size:1.6rem">✅</div>
-          <div>
-            <div style="font-size:0.85rem;color:var(--text)">На сегодня всё повторено!</div>
-            <div style="font-size:0.75rem;color:var(--text-muted)">${newCount > 0 ? newCount + ' глаголов ещё не встречались' : knownCount + ' глаголов в расписании'}</div>
-          </div>
-        </div>`;
+      if (due > 0) {
+        srsWidget.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:4px">📅 Повторение сегодня</div><div style="font-size:1.8rem;font-weight:600;color:var(--text)">${due}</div><div style="font-size:0.78rem;color:var(--text-muted)">глагол${due===1?'':due<5?'а':'ов'} ждут повторения</div></div><button class="btn btn-primary" onclick="startSRSReview()" style="white-space:nowrap">Повторить →</button></div>`;
+      } else {
+        srsWidget.innerHTML = `<div style="display:flex;align-items:center;gap:12px;"><div style="font-size:1.6rem">✅</div><div><div style="font-size:0.85rem;color:var(--text)">На сегодня всё повторено!</div><div style="font-size:0.75rem;color:var(--text-muted)">${newCount > 0 ? newCount + ' глаголов ещё не встречались' : knownCount + ' глаголов в расписании'}</div></div></div>`;
+      }
     }
-  }
-  }; // end _renderWithStats
+  };
 
-  // Render immediately with local cache (no network = no black screen)
-  await _renderWithStats(true);
-  // Refresh from Supabase silently in background
-  _renderWithStats(false).catch(e => {});
+  // Paint instantly — no await, no network
+  try { paintFromCache(); } catch(e) { console.error('renderHome cache paint:', e); }
+
+  // ── 2. Background refresh from Supabase ──
+  if (!sbUser) return;
+  try {
+    await syncStatsFromCloud();
+    const { data: metaData } = await sb.from('meta').select('streak,best_streak').eq('user_id', sbUser.id).maybeSingle();
+    if (metaData) {
+      setText('hs-streak', metaData.streak || 0);
+      // re-paint stats with fresh data
+      const stats = loadStats();
+      let vTotal = 0, vCorrect = 0, vSeen = new Set();
+      let nTotal = 0, nCorrect = 0, nSeen = new Set();
+      Object.entries(stats).forEach(([k, v]) => {
+        if (k.startsWith('noun_')) {
+          nTotal += v.total||0; nCorrect += v.correct||0; nSeen.add(k.replace('noun_',''));
+        } else if (!k.startsWith('tense_') && !k.startsWith('prep_') && !k.startsWith('ph_')) {
+          vTotal += v.total||0; vCorrect += v.correct||0; vSeen.add(k);
+        }
+      });
+      setText('hs-verbs',      vSeen.size);
+      setText('hs-total',      vTotal);
+      setText('hs-pct',        vTotal > 0 ? Math.round(vCorrect/vTotal*100) + '%' : '—');
+      setText('hs-nouns',      nSeen.size);
+      setText('hs-noun-total', nTotal);
+      setText('hs-noun-pct',   nTotal > 0 ? Math.round(nCorrect/nTotal*100) + '%' : '—');
+    }
+    // Update SRS widget from cloud
+    const { data: srsData } = await sb.from('srs').select('verb_id,due_date').eq('user_id', sbUser.id);
+    if (srsData) {
+      const today = todayStr();
+      const due = srsData.filter(r => r.due_date <= today).length;
+      const knownCount = srsData.length;
+      const newCount = Math.max(0, VERBS.length - knownCount);
+      const srsWidget = document.getElementById('srs-widget');
+      if (srsWidget) {
+        srsWidget.style.display = 'block';
+        if (due > 0) {
+          srsWidget.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:4px">📅 Повторение сегодня</div><div style="font-size:1.8rem;font-weight:600;color:var(--text)">${due}</div><div style="font-size:0.78rem;color:var(--text-muted)">глагол${due===1?'':due<5?'а':'ов'} ждут повторения</div></div><button class="btn btn-primary" onclick="startSRSReview()" style="white-space:nowrap">Повторить →</button></div>`;
+        } else {
+          srsWidget.innerHTML = `<div style="display:flex;align-items:center;gap:12px;"><div style="font-size:1.6rem">✅</div><div><div style="font-size:0.85rem;color:var(--text)">На сегодня всё повторено!</div><div style="font-size:0.75rem;color:var(--text-muted)">${newCount > 0 ? newCount + ' глаголов ещё не встречались' : knownCount + ' глаголов в расписании'}</div></div></div>`;
+        }
+      }
+    }
+  } catch(e) { console.error('renderHome bg refresh:', e); }
 }
 
 // ════════════════════════════════════════════════
@@ -8162,10 +8166,12 @@ initSpeech();
 applyKbMode();
 initTTSEngineUI();
 // ════════════════════════════════════════════════
-// Show profile screen on start
-document.getElementById("main-app").style.display = "none";
-document.getElementById("screen-profile").style.display = "flex";
-switchAuthTab('login');
+// Show profile screen on start — but only if session restore hasn't already logged us in
+if (!currentProfile) {
+  document.getElementById("main-app").style.display = "none";
+  document.getElementById("screen-profile").style.display = "flex";
+  switchAuthTab('login');
+}
 </script>
 </div><!-- /main-app -->
 </body>
