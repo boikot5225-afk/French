@@ -1764,6 +1764,8 @@ input:-webkit-autofill:focus {
     <!-- Answer buttons — shown dynamically -->
     <div id="prep-answer-area" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px;"></div>
     <div id="prep-feedback" style="min-height:48px;display:flex;gap:10px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
+  </div><!-- end trainer-preps-mode -->
+
   <!-- NUMBERS MODE -->
   <div id="trainer-numbers-mode" style="display:none;">
   <div id="numbers-settings" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px;">
@@ -5360,12 +5362,7 @@ function loginProfile(name) {
   hideLoading();
   startBackgroundSync();
   resetTrainer();
-  // Wait for browser to paint before rendering home screen
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      showScreen('home');
-    });
-  });
+  showScreen('home');
 }
 
 function logoutProfile() {
@@ -8166,12 +8163,9 @@ initSpeech();
 applyKbMode();
 initTTSEngineUI();
 // ════════════════════════════════════════════════
-// Show profile screen on start — but only if session restore hasn't already logged us in
-if (!currentProfile) {
-  document.getElementById("main-app").style.display = "none";
-  document.getElementById("screen-profile").style.display = "flex";
-  switchAuthTab('login');
-}
+// Show profile screen on start — session restore will override if logged in
+document.getElementById("screen-profile").style.display = "flex";
+switchAuthTab('login');
 </script>
 </div><!-- /main-app -->
 </body>
