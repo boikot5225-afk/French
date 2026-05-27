@@ -7616,7 +7616,9 @@ async function generatePhrases() {
     const { count: added } = await res.json();
     status.textContent = `✅ Добавлено ${added} фраз!`;
 
-    // Reload phrases from Supabase
+    // Force reload phrases from Supabase
+    PHRASES_LOADED = false;
+    PHRASES.length = 0;
     await loadPhrasesFromCloud();
 
     setTimeout(() => {
