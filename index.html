@@ -1039,8 +1039,8 @@ input:-webkit-autofill:focus {
     <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;">
       <div style="font-size:0.82rem;color:var(--text-muted)">🔊 Авто-озвучка при изучении</div>
       <button id="auto-speak-btn" onclick="toggleAutoSpeak()"
-        style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:${autoSpeak?'var(--accent)':'var(--surface2)'};color:${autoSpeak?'#0e0e10':'var(--text-muted)'};font-size:0.78rem;cursor:pointer">
-        ${autoSpeak ? 'Вкл' : 'Выкл'}
+        style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--text-muted);font-size:0.78rem;cursor:pointer">
+        Выкл
       </button>
     </div>
 
@@ -2140,7 +2140,7 @@ input:-webkit-autofill:focus {
     </div>
 
     <div style="display:flex;gap:10px;margin-bottom:12px;">
-      <input type="text" id="check-input" placeholder="введи форму..." autocomplete="off" autocorrect="off" autocapitalize="off" inputmode="none" spellcheck="false" readonly
+      <input type="text" id="check-input" placeholder="введи форму..." autocomplete="off" autocorrect="off" autocapitalize="off" inputmode="none" spellcheck="false"
         style="flex:1;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:1rem;outline:none"
         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
         onkeydown="if(event.key==='Enter')checkLearnAnswer()">
@@ -2436,6 +2436,8 @@ sb.auth.getSession().then(async ({ data }) => {
     } catch(e) {
       console.error('Session restore error:', e);
       if (overlay) overlay.style.display = 'none';
+    } finally {
+      if (overlay && overlay.style.display !== 'none') overlay.style.display = 'none';
     }
   }
 });
@@ -4712,7 +4714,7 @@ async function doLogin() {
       if (Object.keys(localSRS).length) sbSaveSRS(localSRS);
     }
     if (cloudMeta)
-      localStorage.setItem('conj_' + profile.username + '_meta', JSON.stringify(cloudMeta));
+      localStorage.setItem('conj_' + profile.username.toLowerCase() + '_meta', JSON.stringify(cloudMeta));
 
     loginProfile(profile.username);
     hideLoading();
@@ -4782,13 +4784,20 @@ function initTTSEngineUI() {
   document.querySelectorAll('.tts-engine-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.engine === engine);
   });
+  // Update autoSpeak button state
+  const btn = document.getElementById('auto-speak-btn');
+  if (btn) {
+    btn.textContent = autoSpeak ? 'Вкл' : 'Выкл';
+    btn.style.background = autoSpeak ? 'var(--accent)' : 'var(--surface2)';
+    btn.style.color = autoSpeak ? '#0e0e10' : 'var(--text-muted)';
+  }
 }
 let frKbEnabled = localStorage.getItem('frKbEnabled') !== '0';
 let autoSpeak = localStorage.getItem('autoSpeak') === '1';
 let learnPhraseCount = parseInt(localStorage.getItem('learnPhraseCount') || '3');
 
 function applyKbMode() {
-  const inputs = ['answer-input','ganswer-input','ph-input','num-input'];
+  const inputs = ['answer-input','ganswer-input','ph-input','num-input','check-input','phrase-input'];
   inputs.forEach(id => {
     const inp = document.getElementById(id);
     if (inp) inp.inputMode = frKbEnabled ? 'none' : 'text';
@@ -4879,6 +4888,7 @@ const NOUN_HINTS = {
   "banque":    "💡 Слова на -anque женского рода",
   "beurre":    "💡 Исключение из правила -ure! le beurre — мужской",
   "bibliothèque": "💡 Слова на -thèque женского рода",
+  "poisson":   "💡 Мужской род: le poisson. Слова на -on почти всегда мужского рода",
   "bras":      "💡 Короткие слова на -as мужского рода",
   "bus":       "💡 Заимствования на -us мужского рода",
   "café":      "💡 Слова на ударное -é мужского рода",
@@ -5328,6 +5338,17 @@ function loginProfile(name) {
   startBackgroundSync();
   resetTrainer();
   showScreen('home');
+}
+
+function deleteProfile(name) {
+  if (confirm('Удалить локальный профиль ' + name + '?')) {
+    localStorage.removeItem('conj_' + name.toLowerCase() + '_stats');
+    localStorage.removeItem('conj_' + name.toLowerCase() + '_meta');
+    localStorage.removeItem('conj_' + name.toLowerCase() + '_srs');
+    const list = getProfiles().filter(x => x !== name);
+    saveProfiles(list);
+    renderProfileScreen && renderProfileScreen();
+  }
 }
 
 function logoutProfile() {
@@ -6493,8 +6514,12 @@ async function renderDict() {
     dictSelected = null;
   }
 
-  // Auto-select first if none selected
-  if (!dictSelected && verbs.length > 0) selectDictVerb(verbs[0].id);
+  // Auto-select first if none selected AND it's not a search query (avoid resetting on every keystroke)
+  if (!dictSelected && verbs.length > 0 && !query) selectDictVerb(verbs[0].id);
+  else if (!dictSelected && verbs.length > 0 && query) {
+    // Just scroll the detail to empty state — don't auto-select
+    document.getElementById('dict-detail').innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;text-align:center;padding:40px 0;">← Выбери глагол из списка</div>';
+  }
 }
 
 function closeDictDetail() {
@@ -6588,7 +6613,7 @@ function selectDictVerb(id) {
       <div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
           <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.2rem;color:var(--text);line-height:1">${verb.inf}</div>
-          <button onclick="speak('${verb.inf}')" title="Произнести" style="background:none;border:1px solid var(--border);border-radius:50%;width:32px;height:32px;cursor:pointer;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">🔊</button>
+          <button onclick="speak(this.dataset.speak)" data-speak="${verb.inf.replace(/'/g,'\'')}" title="Произнести" style="background:none;border:1px solid var(--border);border-radius:50%;width:32px;height:32px;cursor:pointer;color:var(--text-muted);font-size:0.85rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">🔊</button>
         </div>
         <div style="color:var(--text-muted);font-size:0.9rem;margin-bottom:8px">${verb.meaning}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -7187,7 +7212,7 @@ function showLearnCheckForm() {
   else hideFrKb('learn');
   const checkInp = document.getElementById('check-input');
   if (checkInp) {
-    if (!frKbEnabled) { checkInp.removeAttribute('readonly'); }
+    checkInp.inputMode = frKbEnabled ? 'none' : 'text';
     setTimeout(() => checkInp.focus(), 150);
   }
 }
@@ -7273,7 +7298,7 @@ function showPhraseForm() {
   else hideFrKb('phrase-learn');
   const phraseInp = document.getElementById('phrase-input');
   if (phraseInp) {
-    if (!frKbEnabled) { phraseInp.removeAttribute('readonly'); }
+    phraseInp.inputMode = frKbEnabled ? 'none' : 'text';
     setTimeout(() => phraseInp.focus(), 150);
   }
 }
@@ -7293,11 +7318,11 @@ function checkPhraseAnswer() {
   } else {
     learnPhraseErrors++;
     speak(phrase.fr.replace('___', phrase.answer));
-    // Push phrase back to end of queue
+    // Push phrase back to end of queue — don't advance idx here
     learnPhraseQueue.push(phrase);
     fb.innerHTML = `<div class="feedback-msg wrong" style="margin-bottom:10px">✗ Правильно: <strong>${phrase.answer}</strong></div>
       <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px">Эта фраза вернётся в конец очереди</div>
-      <button class="btn btn-primary" onclick="learnPhraseIdx++;learnPhraseIdx>=learnPhraseQueue.length?finishLearn():showPhraseForm()" style="width:100%;padding:10px">Понял, дальше →</button>`;
+      <button class="btn btn-primary" onclick="advancePhrase()" style="width:100%;padding:10px">Понял, дальше →</button>`;
   }
 }
 
