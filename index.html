@@ -1998,33 +1998,6 @@ input:-webkit-autofill:focus {
       <button id="add-verb-btn" onclick="showAddVerbModal()" class="btn btn-secondary" style="padding:7px 14px;font-size:0.8rem;white-space:nowrap">➕ Добавить глагол</button>
     </div><!-- end header flex -->
 
-  <!-- Add verb modal -->
-  <div id="add-verb-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px;">
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:400px;">
-      <div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:4px">➕ Добавить глагол</div>
-      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px">DeepSeek сгенерирует формы и фразы автоматически</div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Инфинитив</label>
-        <input id="add-verb-input" placeholder="promettre, cueillir..." autocomplete="off"
-          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
-          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
-          onkeydown="if(event.key==='Enter')addVerb()">
-      </div>
-      <div style="margin-bottom:20px;">
-        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Фраз на глагол</label>
-        <select id="add-verb-phrases" class="select-control" style="width:100%">
-          <option value="10">10</option>
-          <option value="20" selected>20</option>
-          <option value="40">40</option>
-        </select>
-      </div>
-      <div id="add-verb-status" style="display:none;font-size:0.82rem;margin-bottom:12px;text-align:center;padding:8px;border-radius:8px;background:var(--surface2)"></div>
-      <div style="display:flex;gap:8px;">
-        <button onclick="closeAddVerbModal()" class="btn btn-secondary" style="flex:1">Отмена</button>
-        <button onclick="addVerb()" id="add-verb-confirm" class="btn btn-primary" style="flex:1">Добавить</button>
-      </div>
-    </div>
-  </div>
 
     <!-- Filters -->
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
@@ -2418,7 +2391,7 @@ sb.auth.getSession().then(async ({ data }) => {
     if (overlay) { overlay.style.display = 'flex'; }
     if (txt) txt.textContent = 'Восстанавливаем сессию...';
     try {
-      const [profile, , cloudStats, cloudSRS, cloudMeta] = await Promise.all([
+      const [profile, _verbsRes, _phrasesRes, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
         sbGetProfile(), loadVerbsFromCloud(), loadPhrasesFromCloud(), sbLoadStats(), sbLoadSRS(), sbLoadMeta()
       ]);
       if (profile) {
@@ -5931,6 +5904,7 @@ function buildExample(verb, tense, pronounIdx) {
   const storedPronoun = PRONOUNS.find(p => storedNorm.toLowerCase().startsWith(p + ' ') || storedNorm.toLowerCase().startsWith(p + "'"));
   if (storedPronoun) {
     const afterStoredPronoun = storedNorm.slice(storedPronoun.length + 1);
+    if (!afterStoredPronoun) return elide(pronoun + ' ' + form + '.');
     const formWordCount = tense === 'passe' ? 2 : 1;
     const parts = afterStoredPronoun.split(' ');
     const tail = parts.slice(formWordCount).join(' ');
@@ -6076,6 +6050,8 @@ function checkAnswer() {
   const correctShort = normalize(correct.replace(new RegExp('^' + pronoun + "\\s+"), ''));
   const userNorm = normalize(userRaw);
   const isCorrect = userNorm === correctFull || userNorm === correctShort;
+  // Blur to hide mobile keyboard so Next button is visible
+  input.blur();
 
   // Typo detection — levenshtein distance 1
   const isTypo = !isCorrect && (
@@ -7766,6 +7742,8 @@ function checkPhrase() {
   const userNorm = normalize(inp.value.trim());
   const isCorrect = userNorm === normalize(correct) || userNorm === normalize(correct.replace(/-/g,' '));
   inp.className = 'answer-input ' + (isCorrect ? 'correct' : 'wrong');
+  // Blur input to hide mobile keyboard so the Next button is visible
+  inp.blur();
   const full = currentPhrase.fr.replace('___', correct);
   speak(full);
   const html = currentPhrase.fr.replace('___',
@@ -7789,6 +7767,8 @@ function checkPhrase() {
     phFbDiv.appendChild(phSpeakBtn);
     fb.innerHTML = ''; fb.appendChild(phFbDiv);
   }
+  // Scroll feedback into view on mobile
+  setTimeout(() => fb.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
   document.getElementById('phscore-good').textContent   = phGood;
   document.getElementById('phscore-bad').textContent    = phBad;
   document.getElementById('phscore-streak').textContent = phStreak;
@@ -8329,6 +8309,33 @@ initTTSEngineUI();
 document.getElementById("screen-profile").style.display = "flex";
 switchAuthTab('login');
 </script>
+<!-- Add verb modal -->
+  <div id="add-verb-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:400px;">
+      <div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:4px">➕ Добавить глагол</div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px">DeepSeek сгенерирует формы и фразы автоматически</div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Инфинитив</label>
+        <input id="add-verb-input" placeholder="promettre, cueillir..." autocomplete="off"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+          onkeydown="if(event.key==='Enter')addVerb()">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Фраз на глагол</label>
+        <select id="add-verb-phrases" class="select-control" style="width:100%">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="40">40</option>
+        </select>
+      </div>
+      <div id="add-verb-status" style="display:none;font-size:0.82rem;margin-bottom:12px;text-align:center;padding:8px;border-radius:8px;background:var(--surface2)"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeAddVerbModal()" class="btn btn-secondary" style="flex:1">Отмена</button>
+        <button onclick="addVerb()" id="add-verb-confirm" class="btn btn-primary" style="flex:1">Добавить</button>
+      </div>
+    </div>
+  </div>
 </div><!-- /main-app -->
 </body>
 </html>
