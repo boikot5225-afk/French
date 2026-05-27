@@ -1876,7 +1876,7 @@ input:-webkit-autofill:focus {
       <option value="alpha">А→Я</option>
       <option value="group">По группе</option>
     </select>
-    <button class="btn btn-primary" onclick="openAddVerb()" style="white-space:nowrap">+ Добавить глагол</button>
+    <button class="btn btn-primary" onclick="showAddVerbModal()" style="white-space:nowrap">+ Добавить глагол</button>
   </div>
 
   <div id="dict-count" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;"></div>
@@ -1939,115 +1939,6 @@ input:-webkit-autofill:focus {
 </div>
 
 <!-- ADD VERB MODAL -->
-<div id="add-verb-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:500;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-      <h2 style="font-family:'Playfair Display',serif;font-weight:400;font-size:1.5rem">Добавить глагол</h2>
-      <button onclick="closeAddVerb()" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;padding:4px 8px">✕</button>
-    </div>
-
-    <!-- Row 1: infinitif + meaning + group -->
-    <div class="av-top-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      <div>
-        <label style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);display:block;margin-bottom:6px">Инфинитив *</label>
-        <input id="av-inf" placeholder="ex: parler" style="width:100%" class="av-input">
-      </div>
-      <div>
-        <label style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);display:block;margin-bottom:6px">Перевод *</label>
-        <input id="av-meaning" placeholder="ex: говорить" style="width:100%" class="av-input">
-      </div>
-      <div>
-        <label style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);display:block;margin-bottom:6px">Группа *</label>
-        <select id="av-group" class="av-input" style="height:42px">
-          <option value="er">-ER</option>
-          <option value="ir">-IR</option>
-          <option value="re">-RE</option>
-          <option value="irr">Неправильный</option>
-          <option value="ref">Возвратный</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Row 2: pp + aux -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      <div>
-        <label style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);display:block;margin-bottom:6px">Participe passé *</label>
-        <input id="av-pp" placeholder="ex: parlé" style="width:100%" class="av-input">
-      </div>
-      <div>
-        <label style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);display:block;margin-bottom:6px">Auxiliaire *</label>
-        <select id="av-aux" class="av-input" style="height:42px">
-          <option value="avoir">avoir</option>
-          <option value="être">être</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Conjugation tables -->
-    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:12px">Спряжения</div>
-
-    <div id="av-tense-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-      <button class="av-tab active" onclick="setAvTab('present')">Présent</button>
-      <button class="av-tab" onclick="setAvTab('imparfait')">Imparfait</button>
-      <button class="av-tab" onclick="setAvTab('futur')">Futur</button>
-      <button class="av-tab" onclick="setAvTab('ex')">Примеры</button>
-    </div>
-
-    <!-- Présent -->
-    <div id="av-panel-present" class="av-panel">
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-        <div class="av-conj-row"><span class="av-pron">je</span><input class="av-input av-conj" id="av-p-0" placeholder="parle"></div>
-        <div class="av-conj-row"><span class="av-pron">tu</span><input class="av-input av-conj" id="av-p-1" placeholder="parles"></div>
-        <div class="av-conj-row"><span class="av-pron">il/elle</span><input class="av-input av-conj" id="av-p-2" placeholder="parle"></div>
-        <div class="av-conj-row"><span class="av-pron">nous</span><input class="av-input av-conj" id="av-p-3" placeholder="parlons"></div>
-        <div class="av-conj-row"><span class="av-pron">vous</span><input class="av-input av-conj" id="av-p-4" placeholder="parlez"></div>
-        <div class="av-conj-row"><span class="av-pron">ils/elles</span><input class="av-input av-conj" id="av-p-5" placeholder="parlent"></div>
-      </div>
-    </div>
-
-    <!-- Imparfait -->
-    <div id="av-panel-imparfait" class="av-panel" style="display:none">
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-        <div class="av-conj-row"><span class="av-pron">je</span><input class="av-input av-conj" id="av-i-0" placeholder="parlais"></div>
-        <div class="av-conj-row"><span class="av-pron">tu</span><input class="av-input av-conj" id="av-i-1" placeholder="parlais"></div>
-        <div class="av-conj-row"><span class="av-pron">il/elle</span><input class="av-input av-conj" id="av-i-2" placeholder="parlait"></div>
-        <div class="av-conj-row"><span class="av-pron">nous</span><input class="av-input av-conj" id="av-i-3" placeholder="parlions"></div>
-        <div class="av-conj-row"><span class="av-pron">vous</span><input class="av-input av-conj" id="av-i-4" placeholder="parliez"></div>
-        <div class="av-conj-row"><span class="av-pron">ils/elles</span><input class="av-input av-conj" id="av-i-5" placeholder="parlaient"></div>
-      </div>
-    </div>
-
-    <!-- Futur -->
-    <div id="av-panel-futur" class="av-panel" style="display:none">
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-        <div class="av-conj-row"><span class="av-pron">je</span><input class="av-input av-conj" id="av-f-0" placeholder="parlerai"></div>
-        <div class="av-conj-row"><span class="av-pron">tu</span><input class="av-input av-conj" id="av-f-1" placeholder="parleras"></div>
-        <div class="av-conj-row"><span class="av-pron">il/elle</span><input class="av-input av-conj" id="av-f-2" placeholder="parlera"></div>
-        <div class="av-conj-row"><span class="av-pron">nous</span><input class="av-input av-conj" id="av-f-3" placeholder="parlerons"></div>
-        <div class="av-conj-row"><span class="av-pron">vous</span><input class="av-input av-conj" id="av-f-4" placeholder="parlerez"></div>
-        <div class="av-conj-row"><span class="av-pron">ils/elles</span><input class="av-input av-conj" id="av-f-5" placeholder="parleront"></div>
-      </div>
-    </div>
-
-    <!-- Examples -->
-    <div id="av-panel-ex" class="av-panel" style="display:none">
-      <div style="display:grid;gap:8px;">
-        <div class="av-conj-row"><span class="av-pron" style="min-width:110px">Présent</span><input class="av-input" id="av-ex-present" placeholder="Je parle français." style="flex:1"></div>
-        <div class="av-conj-row"><span class="av-pron" style="min-width:110px">Passé composé</span><input class="av-input" id="av-ex-passe" placeholder="J'ai parlé." style="flex:1"></div>
-        <div class="av-conj-row"><span class="av-pron" style="min-width:110px">Imparfait</span><input class="av-input" id="av-ex-imparfait" placeholder="Je parlais." style="flex:1"></div>
-        <div class="av-conj-row"><span class="av-pron" style="min-width:110px">Futur</span><input class="av-input" id="av-ex-futur" placeholder="Je parlerai." style="flex:1"></div>
-      </div>
-    </div>
-
-    <div id="av-error" style="display:none;color:var(--bad);font-size:0.82rem;margin-top:12px;padding:10px 14px;background:var(--re-dim);border-radius:8px;border:1px solid var(--re)"></div>
-
-    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
-      <button class="btn btn-secondary" onclick="closeAddVerb()">Отмена</button>
-      <button class="btn btn-primary" onclick="saveNewVerb()">Сохранить глагол</button>
-    </div>
-  </div>
-</div>
-
 <!-- GROUPS SCREEN -->
 <div id="screen-groups" class="screen">
   <div id="groups-home">
