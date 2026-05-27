@@ -5627,7 +5627,22 @@ async function renderHome() {
 // TRAINER
 // ════════════════════════════════════════════════
 let currentVerb = null, currentPronounIdx = null, currentTense = null;
+let ruleVisible = false;
 let sessionGood = 0, sessionBad = 0, sessionStreak = 0;
+let studySelectedIds = new Set();
+let dictSelected = null;
+let learnVerb = null;
+let learnCheckPronounIdx = 0;
+let studySelectMode = false;
+let learnCheckQueue = [];   // indices 0-5 in random order
+let learnCheckPos = 0;      // current position in queue
+let learnCheckErrors = 0;   // total errors this session
+let learnPhraseQueue = [];
+let learnPhraseIdx = 0;
+let learnPhraseErrors = 0;
+let phGood = 0, phBad = 0, phStreak = 0;
+let currentPhrase = null;
+let phSelectedVerbs = new Set();
 let currentCardHinted = false;
 let reviewMode = false;
 let sessionCount = 0;
@@ -6416,7 +6431,7 @@ async function confirmReset() {
 // ════════════════════════════════════════════════
 // DICTIONARY
 // ════════════════════════════════════════════════
-let dictSelected = null;
+// moved to top
 
 function setDictLayout() {
   const isMobile = window.innerWidth < 700;
@@ -6900,7 +6915,7 @@ function getGrammarRule(verb, tense) {
   return rules[tense] || rules.present;
 }
 
-let ruleVisible = false;
+// ruleVisible declared above
 function toggleRule() {
   ruleVisible = !ruleVisible;
   const box = document.getElementById('rule-box');
@@ -6932,8 +6947,8 @@ function toggleRule() {
 // ════════════════════════════════════════════════
 // LEARN FLOW (Изучить)
 // ════════════════════════════════════════════════
-let learnVerb = null;
-let learnCheckPronounIdx = 0;
+// moved to top
+// moved to top
 
 async function renderStudyScreen() {
   if (!VERBS_LOADED && sbUser) await loadVerbsFromCloud();
@@ -6995,8 +7010,8 @@ async function renderStudyScreen() {
   }
 }
 
-let studySelectMode = false;
-let studySelectedIds = new Set();
+// moved to top
+// studySelectedIds declared above
 let studyQueue = []; // queue for selected session
 let studyQueueIdx = 0;
 
@@ -7155,9 +7170,9 @@ function renderLearnCard() {
 
 function learnAgain() { renderLearnCard(); }
 
-let learnCheckQueue = [];   // indices 0-5 in random order
-let learnCheckPos = 0;      // current position in queue
-let learnCheckErrors = 0;   // total errors this session
+// moved to top
+// moved to top
+// moved to top
 
 function startLearnCheck() {
   // Shuffle all 6 pronoun indices
@@ -7231,9 +7246,9 @@ async function checkLearnAnswer() {
   }
 }
 
-let learnPhraseQueue = [];
-let learnPhraseIdx = 0;
-let learnPhraseErrors = 0;
+// moved to top
+// moved to top
+// moved to top
 
 async function startPhrasesStep() {
   // Ensure phrases loaded from Supabase
@@ -7399,11 +7414,11 @@ function showLearnView(id) {
   });
 }
 // ════════════════════════════════════════════════
-let phGood = 0, phBad = 0, phStreak = 0;
-let currentPhrase = null;
+// moved to top
+// moved to top
 
 let phSelectMode = false;
-let phSelectedVerbs = new Set();
+// moved to top
 
 function togglePhVerbSelect() {
   phSelectMode = !phSelectMode;
