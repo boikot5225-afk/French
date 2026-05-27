@@ -2294,7 +2294,41 @@ input:-webkit-autofill:focus {
       <option value="imparfait">Imparfait</option>
       <option value="futur">Futur simple</option>
     </select>
+    <button onclick="showGenerateModal()" class="btn btn-secondary" style="padding:6px 12px;font-size:0.78rem;white-space:nowrap">✨ Генерировать</button>
     <div id="ph-count" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto"></div>
+  </div>
+
+  <!-- Generate modal -->
+  <div id="generate-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:380px;">
+      <div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:16px">✨ Генерировать фразы</div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Глагол</label>
+        <input id="gen-verb" placeholder="avoir, être, aller..." style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Время</label>
+        <select id="gen-tense" class="select-control" style="width:100%">
+          <option value="present">Présent</option>
+          <option value="passe">Passé composé</option>
+          <option value="imparfait">Imparfait</option>
+          <option value="futur">Futur simple</option>
+        </select>
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Количество фраз</label>
+        <select id="gen-count" class="select-control" style="width:100%">
+          <option value="20">20</option>
+          <option value="30">30</option>
+          <option value="50" selected>50</option>
+        </select>
+      </div>
+      <div id="gen-status" style="display:none;font-size:0.82rem;color:var(--accent);margin-bottom:12px;text-align:center"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeGenerateModal()" class="btn btn-secondary" style="flex:1">Отмена</button>
+        <button onclick="generatePhrases()" id="gen-btn" class="btn btn-primary" style="flex:1">Генерировать</button>
+      </div>
+    </div>
   </div>
 
   <!-- Search and verb selection -->
@@ -7532,6 +7566,71 @@ function getFilteredPhrases() {
     }
     return true;
   });
+}
+
+// ════════════════════════════════════════════════
+// GENERATE PHRASES via DeepSeek
+// ════════════════════════════════════════════════
+function showGenerateModal() {
+  const modal = document.getElementById('generate-modal');
+  modal.style.display = 'flex';
+}
+
+function closeGenerateModal() {
+  const modal = document.getElementById('generate-modal');
+  modal.style.display = 'none';
+  document.getElementById('gen-status').style.display = 'none';
+}
+
+async function generatePhrases() {
+  const verb  = document.getElementById('gen-verb').value.trim();
+  const tense = document.getElementById('gen-tense').value;
+  const count = parseInt(document.getElementById('gen-count').value);
+
+  if (!verb) { alert('Введи глагол'); return; }
+
+  const btn    = document.getElementById('gen-btn');
+  const status = document.getElementById('gen-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Генерируем...';
+  status.style.display = 'block';
+  status.textContent = 'Запрос к DeepSeek...';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-phrases`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || SUPABASE_KEY}`,
+        'apikey': SUPABASE_KEY,
+      },
+      body: JSON.stringify({ verb, tense, count })
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err);
+    }
+
+    const { count: added } = await res.json();
+    status.textContent = `✅ Добавлено ${added} фраз!`;
+
+    // Reload phrases from Supabase
+    await loadPhrasesFromCloud();
+
+    setTimeout(() => {
+      closeGenerateModal();
+      renderPhrasesScreen();
+    }, 1500);
+
+  } catch(e) {
+    status.style.color = 'var(--bad)';
+    status.textContent = '❌ Ошибка: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Генерировать';
+  }
 }
 
 async function renderPhrasesScreen() {
