@@ -7535,7 +7535,7 @@ async function addVerb() {
 
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-phrases`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/add-phrases`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -7634,7 +7634,7 @@ async function generatePhrases() {
 
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-phrases`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/add-phrases`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
