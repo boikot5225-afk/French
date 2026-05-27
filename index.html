@@ -2104,7 +2104,36 @@ input:-webkit-autofill:focus {
         <h2 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:4px">🎧 Изучить</h2>
         <div style="font-size:0.78rem;color:var(--text-muted)">Познакомься с новым глаголом, потом закрепи в тренажёре</div>
       </div>
+      <button id="add-verb-btn" onclick="showAddVerbModal()" class="btn btn-secondary" style="display:none;padding:7px 14px;font-size:0.8rem;white-space:nowrap">➕ Добавить глагол</button>
+    </div><!-- end header flex -->
+
+  <!-- Add verb modal -->
+  <div id="add-verb-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:400px;">
+      <div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:4px">➕ Добавить глагол</div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px">DeepSeek сгенерирует формы и фразы автоматически</div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Инфинитив</label>
+        <input id="add-verb-input" placeholder="promettre, cueillir..." autocomplete="off"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+          onkeydown="if(event.key==='Enter')addVerb()">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Фраз на глагол</label>
+        <select id="add-verb-phrases" class="select-control" style="width:100%">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="40">40</option>
+        </select>
+      </div>
+      <div id="add-verb-status" style="display:none;font-size:0.82rem;margin-bottom:12px;text-align:center;padding:8px;border-radius:8px;background:var(--surface2)"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeAddVerbModal()" class="btn btn-secondary" style="flex:1">Отмена</button>
+        <button onclick="addVerb()" id="add-verb-confirm" class="btn btn-primary" style="flex:1">Добавить</button>
+      </div>
     </div>
+  </div>
 
     <!-- Filters -->
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
@@ -2194,10 +2223,14 @@ input:-webkit-autofill:focus {
       <button class="btn btn-secondary" onclick="learnAgain()" style="padding:12px">🔄 Показать снова</button>
       <button class="btn btn-primary" onclick="startLearnCheck()" style="padding:12px">✏️ Закрепить →</button>
     </div>
-    <div style="margin-top:8px;">
-      <button onclick="startPhrasesStep()" style="width:100%;background:none;border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;">
+    <div style="margin-top:8px;display:flex;gap:8px;">
+      <button onclick="startPhrasesStep()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;">
         💬 Понял паттерн, сразу к фразам →
       </button>
+      <button id="study-gen-btn" onclick="showGenerateModalForVerb(learnVerb?.id)" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--accent);cursor:pointer;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;white-space:nowrap;">
+        ✨ Фразы
+      </button>
+    </div>
     </div>
   </div>
 
@@ -2304,7 +2337,10 @@ input:-webkit-autofill:focus {
       <div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:16px">✨ Генерировать фразы</div>
       <div style="margin-bottom:12px;">
         <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Глагол</label>
-        <input id="gen-verb" placeholder="avoir, être, aller..." style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <input id="gen-verb-search" placeholder="Поиск глагола..." oninput="filterGenVerbs()"
+          style="width:100%;box-sizing:border-box;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;outline:none;margin-bottom:6px"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <select id="gen-verb" class="select-control" style="width:100%;max-height:160px" size="6"></select>
       </div>
       <div style="margin-bottom:12px;">
         <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Время</label>
@@ -6672,6 +6708,7 @@ function selectDictVerb(id) {
         <br><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="startTrainerVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">▶ Тренировать</button>
           <button class="btn btn-secondary" onclick="studyOneVerb('${verb.id}');showScreen('study')" style="padding:7px 14px;font-size:0.75rem">🎧 Изучить</button>
+          ${currentProfile?.toLowerCase() === ADMIN_USERNAME ? `<button class="btn btn-secondary" onclick="showGenerateModalForVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">✨ Фразы</button>` : ''}
           ${verb.custom ? `<button class="btn btn-secondary" onclick="editCustomVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">✏️ Редактировать</button>
           <button class="btn btn-danger" onclick="deleteCustomVerb('${verb.id}')" style="padding:7px 14px;font-size:0.75rem">🗑 Удалить</button>` : ''}
         </div>
@@ -7213,6 +7250,11 @@ function renderLearnCard() {
   const ex = document.getElementById('learn-example');
   if (ex) ex.textContent = v.ex?.present || '';
   if (autoSpeak) setTimeout(() => speak(v.inf), 300);
+  // Show generate button only for admin
+  const genBtn = document.getElementById('study-gen-btn');
+  if (genBtn) genBtn.style.display = currentProfile?.toLowerCase() === ADMIN_USERNAME ? 'block' : 'none';
+  const addVerbBtn = document.getElementById('add-verb-btn');
+  if (addVerbBtn) addVerbBtn.style.display = currentProfile?.toLowerCase() === ADMIN_USERNAME ? 'block' : 'none';
 }
 
 function learnAgain() { renderLearnCard(); }
@@ -7571,29 +7613,130 @@ function getFilteredPhrases() {
 // ════════════════════════════════════════════════
 // GENERATE PHRASES via DeepSeek
 // ════════════════════════════════════════════════
-function showGenerateModal() {
+const ADMIN_USERNAME = 'boikot5225';
+
+function showAddVerbModal() {
+  document.getElementById('add-verb-modal').style.display = 'flex';
+  document.getElementById('add-verb-input').value = '';
+  const st = document.getElementById('add-verb-status');
+  st.style.display = 'none';
+  setTimeout(() => document.getElementById('add-verb-input').focus(), 100);
+}
+
+function closeAddVerbModal() {
+  document.getElementById('add-verb-modal').style.display = 'none';
+}
+
+async function addVerb() {
+  const infinitive = document.getElementById('add-verb-input').value.trim().toLowerCase();
+  const phrasesCount = parseInt(document.getElementById('add-verb-phrases').value);
+  if (!infinitive) { alert('Введи инфинитив'); return; }
+
+  const btn = document.getElementById('add-verb-confirm');
+  const status = document.getElementById('add-verb-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Генерируем...';
+  status.style.display = 'block';
+  status.style.color = 'var(--accent)';
+  status.textContent = '⏳ DeepSeek генерирует формы и фразы...';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/add-verb`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || SUPABASE_KEY}`,
+        'apikey': SUPABASE_KEY,
+      },
+      body: JSON.stringify({ infinitive, phrasesCount })
+    });
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || res.statusText);
+
+    status.style.color = 'var(--good)';
+    status.textContent = `✅ Глагол «${json.verb}» добавлен + ${json.phrases} фраз!`;
+
+    // Reload verbs and phrases
+    VERBS_LOADED = false;
+    PHRASES_LOADED = false;
+    PHRASES.length = 0;
+    await Promise.all([loadVerbsFromCloud(), loadPhrasesFromCloud()]);
+
+    setTimeout(() => {
+      closeAddVerbModal();
+      renderStudyScreen();
+    }, 2000);
+
+  } catch(e) {
+    status.style.color = 'var(--bad)';
+    status.textContent = '❌ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Добавить';
+  }
+}
+
+function showGenerateModalForVerb(verbId) {
+  if (currentProfile?.toLowerCase() !== ADMIN_USERNAME) return;
   const modal = document.getElementById('generate-modal');
   modal.style.display = 'flex';
+  populateGenVerbList('');
+  // Pre-select the verb
+  const sel = document.getElementById('gen-verb');
+  if (sel && verbId) {
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === verbId) { sel.selectedIndex = i; break; }
+    }
+  }
+}
+
+function showGenerateModal() {
+  // Only admin can generate
+  if (currentProfile?.toLowerCase() !== ADMIN_USERNAME) {
+    showToast('Генерация доступна только администратору');
+    return;
+  }
+  const modal = document.getElementById('generate-modal');
+  modal.style.display = 'flex';
+  // Populate verb list
+  populateGenVerbList('');
+}
+
+function populateGenVerbList(filter) {
+  const sel = document.getElementById('gen-verb');
+  if (!sel) return;
+  const filtered = VERBS.filter(v => !filter || v.inf.toLowerCase().includes(filter.toLowerCase()) || (v.meaning||'').toLowerCase().includes(filter.toLowerCase()));
+  sel.innerHTML = filtered.map(v => `<option value="${v.id}">${v.inf} — ${v.meaning||''}</option>`).join('');
+}
+
+function filterGenVerbs() {
+  const q = document.getElementById('gen-verb-search').value;
+  populateGenVerbList(q);
 }
 
 function closeGenerateModal() {
   const modal = document.getElementById('generate-modal');
   modal.style.display = 'none';
-  document.getElementById('gen-status').style.display = 'none';
+  const status = document.getElementById('gen-status');
+  if (status) { status.style.display = 'none'; status.style.color = 'var(--accent)'; }
 }
 
 async function generatePhrases() {
-  const verb  = document.getElementById('gen-verb').value.trim();
+  const sel   = document.getElementById('gen-verb');
+  const verb  = sel?.value;
   const tense = document.getElementById('gen-tense').value;
   const count = parseInt(document.getElementById('gen-count').value);
 
-  if (!verb) { alert('Введи глагол'); return; }
+  if (!verb) { alert('Выбери глагол'); return; }
 
   const btn    = document.getElementById('gen-btn');
   const status = document.getElementById('gen-status');
   btn.disabled = true;
   btn.textContent = '⏳ Генерируем...';
   status.style.display = 'block';
+  status.style.color = 'var(--accent)';
   status.textContent = 'Запрос к DeepSeek...';
 
   try {
@@ -7616,7 +7759,7 @@ async function generatePhrases() {
     const { count: added } = await res.json();
     status.textContent = `✅ Добавлено ${added} фраз!`;
 
-    // Force reload phrases from Supabase
+    // Force reload phrases
     PHRASES_LOADED = false;
     PHRASES.length = 0;
     await loadPhrasesFromCloud();
