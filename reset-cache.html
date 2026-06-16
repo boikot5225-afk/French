@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>An II — сброс кэша</title>
+<style>body{font-family:system-ui,sans-serif;background:#d9c99f;color:#2b2418;padding:24px;line-height:1.5}button{font-size:18px;padding:14px 18px;border-radius:10px;border:1px solid #8b2a22;background:#b12a22;color:#fff}</style>
+</head>
+<body>
+<h1>Сброс кэша An II</h1>
+<p>Нажми кнопку, если приложение застряло на старой версии или не реагирует вход.</p>
+<button onclick="reset()">Сбросить кэш и перезагрузить</button>
+<pre id="log"></pre>
+<script>
+async function reset(){
+ const log = document.getElementById('log');
+ try{
+   if ('serviceWorker' in navigator) {
+     const regs = await navigator.serviceWorker.getRegistrations();
+     for (const r of regs) await r.unregister();
+     log.textContent += 'Service worker удалён\n';
+   }
+   if ('caches' in window) {
+     const keys = await caches.keys();
+     for (const k of keys) await caches.delete(k);
+     log.textContent += 'Cache storage очищен\n';
+   }
+   sessionStorage.clear();
+   localStorage.removeItem('an2_cache_verbs_v1');
+   localStorage.removeItem('an2_cache_verbs_firebase_v24');
+   log.textContent += 'Готово. Открываю приложение...\n';
+   setTimeout(()=>location.href='./index.html?fresh=' + Date.now(), 600);
+ }catch(e){ log.textContent += 'Ошибка: ' + e.message; }
+}
+</script>
+</body></html>

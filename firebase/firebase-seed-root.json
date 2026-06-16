@@ -1,0 +1,256 @@
+{
+  "verbs": {
+    "etre": {
+      "id": "être",
+      "inf": "être",
+      "meaning": "быть",
+      "group_name": "irr",
+      "aux": "avoir",
+      "pp": "été",
+      "reflexive": false,
+      "custom": false,
+      "conj": {
+        "present": [
+          "suis",
+          "es",
+          "est",
+          "sommes",
+          "êtes",
+          "sont"
+        ],
+        "imparfait": [
+          "étais",
+          "étais",
+          "était",
+          "étions",
+          "étiez",
+          "étaient"
+        ],
+        "futur": [
+          "serai",
+          "seras",
+          "sera",
+          "serons",
+          "serez",
+          "seront"
+        ]
+      },
+      "ex": {
+        "present": "Je suis prêt.",
+        "passe": "J'ai été malade.",
+        "imparfait": "J'étais fatigué.",
+        "futur": "Je serai là demain."
+      }
+    },
+    "avoir": {
+      "id": "avoir",
+      "inf": "avoir",
+      "meaning": "иметь",
+      "group_name": "irr",
+      "aux": "avoir",
+      "pp": "eu",
+      "reflexive": false,
+      "custom": false,
+      "conj": {
+        "present": [
+          "ai",
+          "as",
+          "a",
+          "avons",
+          "avez",
+          "ont"
+        ],
+        "imparfait": [
+          "avais",
+          "avais",
+          "avait",
+          "avions",
+          "aviez",
+          "avaient"
+        ],
+        "futur": [
+          "aurai",
+          "auras",
+          "aura",
+          "aurons",
+          "aurez",
+          "auront"
+        ]
+      },
+      "ex": {
+        "present": "J'ai une question.",
+        "passe": "J'ai eu peur.",
+        "imparfait": "J'avais raison.",
+        "futur": "J'aurai le temps."
+      }
+    },
+    "aller": {
+      "id": "aller",
+      "inf": "aller",
+      "meaning": "идти, ехать",
+      "group_name": "irr",
+      "aux": "être",
+      "pp": "allé",
+      "reflexive": false,
+      "custom": false,
+      "conj": {
+        "present": [
+          "vais",
+          "vas",
+          "va",
+          "allons",
+          "allez",
+          "vont"
+        ],
+        "imparfait": [
+          "allais",
+          "allais",
+          "allait",
+          "allions",
+          "alliez",
+          "allaient"
+        ],
+        "futur": [
+          "irai",
+          "iras",
+          "ira",
+          "irons",
+          "irez",
+          "iront"
+        ]
+      },
+      "ex": {
+        "present": "Je vais au cours.",
+        "passe": "Je suis allé au magasin.",
+        "imparfait": "J'allais souvent là-bas.",
+        "futur": "J'irai demain."
+      }
+    },
+    "faire": {
+      "id": "faire",
+      "inf": "faire",
+      "meaning": "делать",
+      "group_name": "irr",
+      "aux": "avoir",
+      "pp": "fait",
+      "reflexive": false,
+      "custom": false,
+      "conj": {
+        "present": [
+          "fais",
+          "fais",
+          "fait",
+          "faisons",
+          "faites",
+          "font"
+        ],
+        "imparfait": [
+          "faisais",
+          "faisais",
+          "faisait",
+          "faisions",
+          "faisiez",
+          "faisaient"
+        ],
+        "futur": [
+          "ferai",
+          "feras",
+          "fera",
+          "ferons",
+          "ferez",
+          "feront"
+        ]
+      },
+      "ex": {
+        "present": "Je fais un exercice.",
+        "passe": "J'ai fait une erreur.",
+        "imparfait": "Je faisais mes devoirs.",
+        "futur": "Je ferai attention."
+      }
+    },
+    "vouloir": {
+      "id": "vouloir",
+      "inf": "vouloir",
+      "meaning": "хотеть",
+      "group_name": "irr",
+      "aux": "avoir",
+      "pp": "voulu",
+      "reflexive": false,
+      "custom": false,
+      "conj": {
+        "present": [
+          "veux",
+          "veux",
+          "veut",
+          "voulons",
+          "voulez",
+          "veulent"
+        ],
+        "imparfait": [
+          "voulais",
+          "voulais",
+          "voulait",
+          "voulions",
+          "vouliez",
+          "voulaient"
+        ],
+        "futur": [
+          "voudrai",
+          "voudras",
+          "voudra",
+          "voudrons",
+          "voudrez",
+          "voudront"
+        ]
+      },
+      "ex": {
+        "present": "Je veux comprendre.",
+        "passe": "J'ai voulu répondre.",
+        "imparfait": "Je voulais partir.",
+        "futur": "Je voudrai essayer."
+      }
+    },
+    "pouvoir": {
+      "id": "pouvoir",
+      "inf": "pouvoir",
+      "meaning": "мочь",
+      "group_name": "irr",
+      "aux": "avoir",
+      "pp": "pu",
+      "reflexive": false,
+      "custom": false,
+      "conj": {
+        "present": [
+          "peux",
+          "peux",
+          "peut",
+          "pouvons",
+          "pouvez",
+          "peuvent"
+        ],
+        "imparfait": [
+          "pouvais",
+          "pouvais",
+          "pouvait",
+          "pouvions",
+          "pouviez",
+          "pouvaient"
+        ],
+        "futur": [
+          "pourrai",
+          "pourras",
+          "pourra",
+          "pourrons",
+          "pourrez",
+          "pourront"
+        ]
+      },
+      "ex": {
+        "present": "Je peux aider.",
+        "passe": "J'ai pu venir.",
+        "imparfait": "Je pouvais attendre.",
+        "futur": "Je pourrai continuer."
+      }
+    }
+  }
+}

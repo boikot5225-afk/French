@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>An II — reader-ai test</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#d9c99f;color:#2b2418;padding:24px;line-height:1.5;max-width:760px;margin:auto}
+    textarea,input,button{font:inherit;border-radius:10px;border:1px solid #a78f58;padding:10px;box-sizing:border-box}
+    textarea,input{width:100%;background:#efe3bd;color:#2b2418}
+    button{background:#b12a22;color:#fff;border-color:#8b2a22;cursor:pointer;margin-top:10px}
+    pre{white-space:pre-wrap;background:#231f1b;color:#f6ead0;padding:14px;border-radius:12px;overflow:auto}
+  </style>
+</head>
+<body>
+  <h1>reader-ai test</h1>
+  <p>Проверяет Supabase Edge Function <b>reader-ai</b>. v49 отправляет POST вообще без headers, чтобы не провоцировать CORS preflight при origin=null.</p>
+  <label>Supabase URL</label>
+  <input id="url" value="https://dhimxbkjvowmwrosgcpb.supabase.co" />
+  <label>Текст</label>
+  <textarea id="text" rows="4">Les tirages cumulés de ses livres atteignent 550 millions d’exemplaires.</textarea>
+  <button onclick="testWord()">Test word: atteignent</button>
+  <button onclick="testTranslate()">Test paragraph translation</button>
+  <pre id="out">Жду...</pre>
+<script>
+async function call(payload){
+  const out=document.getElementById('out');
+  const url=document.getElementById('url').value.replace(/\/$/,'') + '/functions/v1/reader-ai';
+  out.textContent='Запрос: '+url+'\n';
+  try{
+    const res=await fetch(url,{method:'POST',body:JSON.stringify(payload)});
+    const raw=await res.text();
+    out.textContent += 'HTTP '+res.status+'\n\n'+raw;
+  }catch(e){
+    out.textContent += 'ERROR: '+(e && e.message ? e.message : e)+'\n\nЕсли Failed to fetch: функция reader-ai не public/no-verify-jwt, не развернута или домен Supabase недоступен.';
+  }
+}
+function testWord(){call({task:'reader_word',word:'atteignent',context:document.getElementById('text').value});}
+function testTranslate(){call({task:'translate_paragraph',text:document.getElementById('text').value,sourceLang:'fr',targetLang:'ru'});}
+</script>
+</body>
+</html>

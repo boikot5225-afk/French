@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>An II — Firebase import</title>
+  <style>
+    body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#111;color:#eee;margin:0;padding:20px;line-height:1.45}
+    .card{max-width:880px;margin:0 auto;background:#1b1b1f;border:1px solid #333;border-radius:16px;padding:18px}
+    input,textarea{width:100%;box-sizing:border-box;background:#0b0b0d;color:#eee;border:1px solid #444;border-radius:10px;padding:12px;margin:6px 0 12px;font:inherit}
+    textarea{min-height:240px;font-family:ui-monospace,monospace;font-size:13px}
+    button{background:#a62a21;color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:700;cursor:pointer;margin-right:8px;margin-bottom:8px}
+    button:disabled{opacity:.6;cursor:wait}
+    pre{background:#0b0b0d;border:1px solid #333;border-radius:12px;padding:12px;overflow:auto;white-space:pre-wrap}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.muted{color:#aaa}.ok{color:#7ad68a}.bad{color:#ff7b72}
+    @media(max-width:700px){.row{grid-template-columns:1fr}}
+  </style>
+  <script src="js/firebase-config.js?v=23.0-writefix"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script>if(!window.firebase){document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.5/firebase-app-compat.js"><\/script>')}</script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script>if(window.firebase&&!firebase.auth){document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.5/firebase-auth-compat.js"><\/script>')}</script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script>if(window.firebase&&!firebase.database){document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.5/firebase-database-compat.js"><\/script>')}</script>
+</head>
+<body>
+<div class="card">
+  <h1>Firebase import</h1>
+  <p class="muted">Мини-админка: войти Firebase-аккаунтом и залить JSON в нужный путь. Для публичных данных обычно путь <code>verbs</code>, <code>phrases</code>, <code>nouns</code> или <code>prepositions</code>.</p>
+  <div class="row">
+    <div><label>Email</label><input id="email" type="email" autocomplete="username"></div>
+    <div><label>Password</label><input id="password" type="password" autocomplete="current-password"></div>
+  </div>
+  <button id="login">Войти</button><button id="logout">Выйти</button>
+  <p id="user" class="muted">Не вошёл.</p>
+  <label>Путь в Realtime Database</label>
+  <input id="path" value="verbs">
+  <label>JSON</label>
+  <textarea id="json" placeholder='Вставь содержимое firebase/seed-verbs.json'></textarea>
+  <button id="import">Залить JSON в этот путь</button>
+  <button id="loadSeed">Подставить пример 6 глаголов</button>
+  <pre id="out">Готов.</pre>
+</div>
+<script>
+const seed = null;
+const out=document.getElementById('out');
+function log(s, cls){ out.innerHTML += (cls?`<span class="${cls}">${s}</span>`:s)+'\n'; }
+function reset(){ out.textContent=''; }
+function init(){
+  if(!window.firebase) throw new Error('Firebase SDK не загрузился');
+  if(!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+  firebase.auth().onAuthStateChanged(u=>{document.getElementById('user').textContent=u?`Вошёл: ${u.email} / UID: ${u.uid}`:'Не вошёл.'});
+}
+init();
+document.getElementById('login').onclick=async()=>{reset();try{await firebase.auth().signInWithEmailAndPassword(email.value,password.value);log('✓ Вход выполнен','ok')}catch(e){log('✗ '+(e.code?e.code+' ':'')+e.message,'bad')}};
+document.getElementById('logout').onclick=async()=>{await firebase.auth().signOut();reset();log('Вышел.')};
+document.getElementById('loadSeed').onclick=async()=>{reset();try{const res=await fetch('firebase/seed-verbs.json',{cache:'no-store'});json.value=JSON.stringify(await res.json(),null,2);log('✓ seed-verbs.json подставлен','ok')}catch(e){log('✗ Не смог прочитать firebase/seed-verbs.json: '+e.message,'bad')}};
+document.getElementById('import').onclick=async()=>{
+  reset();
+  try{
+    const u=firebase.auth().currentUser;
+    if(!u) throw new Error('Сначала войди Firebase-аккаунтом');
+    const path=document.getElementById('path').value.trim().replace(/^\/+|\/+$/g,'');
+    if(!path) throw new Error('Укажи путь');
+    const payload=JSON.parse(document.getElementById('json').value);
+    await firebase.database().ref(path).set(payload);
+    log(`✓ Залито в /${path}`,'ok');
+  }catch(e){log('✗ '+(e.code?e.code+' ':'')+e.message,'bad')}
+};
+</script>
+</body>
+</html>

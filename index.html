@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>An II — Французский язык</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#a62a21">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="An II">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+  <link rel="shortcut icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital@0;1&family=IBM+Plex+Sans:wght@300;400;500&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <script src="js/firebase-config.js?v=28.0-dict-tools"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script>
+    if (!window.firebase) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.5/firebase-app-compat.js"><\/script>');
+    }
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script>
+    if (window.firebase && !firebase.auth) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.5/firebase-auth-compat.js"><\/script>');
+    }
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script>
+    if (window.firebase && !firebase.database) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.5/firebase-database-compat.js"><\/script>');
+    }
+  </script>
+  <script>
+    // Build marker. Меняем при каждом фикс-релизе, чтобы старый app.js не елся из кэша.
+    window.AN2_BUILD = 'v64.0-auth-core-restore';
+
+    // Чистим только кэши приложения. localStorage и облачные данные не трогаем.
+    if ('caches' in window) {
+      caches.keys().then((keys) => Promise.all(
+        keys
+          .filter((key) => key.startsWith('an2-cache-') && key !== 'an2-cache-v23-writefix')
+          .map((key) => caches.delete(key))
+      )).catch(() => {});
+    }
+
+    // Register service worker for PWA. Scope берётся от текущей папки:
+    // работает и в корне, и в /Test/, без GitHub Actions и без жёстких путей.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        const swUrl = new URL('sw.js', location.href);
+        const swScope = new URL('./', location.href).pathname;
+        navigator.serviceWorker.register(swUrl, { scope: swScope })
+          .then((reg) => {
+            reg.update().catch(() => {});
+          })
+          .catch((e) => console.warn('SW registration failed:', e));
+      });
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<div id="loading-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div style="width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <div id="loading-text" style="font-size:0.85rem;color:var(--text-muted)">Загружаем данные...</div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9998;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-size:0.82rem;color:var(--text);box-shadow:0 4px 20px rgba(0,0,0,0.4);white-space:nowrap;"></div>
+
+<style>
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+.shake { animation: shake 0.35s ease; }
+</style>
+
+
+<div id="screen-profile" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg);">
+  <div style="width:100%;max-width:400px;">
+    <div style="text-align:center;margin-bottom:36px;">
+      <div style="font-family:'Playfair Display',serif;font-size:2.8rem;color:var(--accent);margin-bottom:2px;letter-spacing:0.04em;font-weight:700">An&nbsp;II</div><div style="font-family:'Playfair Display',serif;font-style:italic;font-size:0.95rem;color:var(--text-muted);margin-bottom:8px">apprendre le français · l'an deux</div>
+      <div style="color:var(--text-muted);font-size:0.9rem">Тренажёр французских глаголов</div>
+    </div>
+
+    <!-- Tab switcher -->
+    <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:24px;">
+      <button id="auth-tab-login" onclick="switchAuthTab('login')"
+        style="flex:1;padding:8px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.85rem;cursor:pointer;background:var(--accent);color:#f5ecd8;font-weight:500;transition:all 0.2s">
+        Войти
+      </button>
+      <button id="auth-tab-register" onclick="switchAuthTab('register')"
+        style="flex:1;padding:8px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.85rem;cursor:pointer;background:none;color:var(--text-muted);transition:all 0.2s">
+        Регистрация
+      </button>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;">
+
+      <!-- Login form -->
+      <div id="auth-form-login">
+        <div style="margin-bottom:14px;">
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Email</label>
+          <input id="login-email" type="email" placeholder="you@example.com" autocomplete="email"
+            style="width:100%;box-sizing:border-box;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+            onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Пароль</label>
+          <input id="login-password" type="password" placeholder="••••••••" autocomplete="current-password"
+            style="width:100%;box-sizing:border-box;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+            onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <button class="btn btn-primary" onclick="doLogin()" style="width:100%;padding:12px;font-size:0.95rem" id="login-btn">Войти</button>
+      </div>
+
+      <!-- Register form -->
+      <div id="auth-form-register" style="display:none;">
+        <div style="margin-bottom:14px;">
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Имя пользователя</label>
+          <input id="reg-username" type="text" placeholder="Jean Dupont" maxlength="24"
+            style="width:100%;box-sizing:border-box;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Email</label>
+          <input id="reg-email" type="email" placeholder="you@example.com" autocomplete="email"
+            style="width:100%;box-sizing:border-box;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Пароль</label>
+          <input id="reg-password" type="password" placeholder="Минимум 6 символов" autocomplete="new-password"
+            style="width:100%;box-sizing:border-box;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+            onkeydown="if(event.key==='Enter')doRegister()">
+        </div>
+        <button class="btn btn-primary" onclick="doRegister()" style="width:100%;padding:12px;font-size:0.95rem" id="reg-btn">Создать аккаунт</button>
+      </div>
+
+      <div id="auth-error" style="display:none;margin-top:14px;padding:10px 14px;background:#3a1a1a;border:1px solid var(--bad);border-radius:8px;font-size:0.82rem;color:var(--bad);"></div>
+      <div id="auth-success" style="display:none;margin-top:14px;padding:10px 14px;background:#1a3a28;border:1px solid var(--good);border-radius:8px;font-size:0.82rem;color:var(--good);"></div>
+
+      <!-- Guest mode -->
+      <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);text-align:center;">
+        <button onclick="continueAsGuest()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:11px 14px;width:100%;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;cursor:pointer">
+          Продолжить без регистрации →
+        </button>
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:8px;line-height:1.4">
+          Доступны все функции, кроме генерации и AI-проверки.<br>Прогресс сохраняется только на этом устройстве.
+        </div>
+      </div>
+
+      <!-- Diagnostics: visible build version + connectivity self-test.
+           The version label instantly answers "is the phone running stale cache?" -->
+      <div style="margin-top:16px;text-align:center;">
+        <button onclick="checkServerHealth()" id="health-btn" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text-muted);font-family:'IBM Plex Sans',sans-serif;font-size:0.78rem;cursor:pointer">
+          📡 Проверить связь с сервером
+        </button>
+        <div id="health-result" style="display:none;margin-top:10px;font-size:0.78rem;line-height:1.5;padding:8px 12px;border-radius:8px;"></div>
+        <div style="margin-top:10px;font-size:0.68rem;color:var(--text-dim)">сборка <span id="build-label">v58.0-reader-buttons-direct-bind</span></div>
+      </div>
+    </div>
+
+    <!-- Local profile option removed - use Firebase auth only -->
+  </div>
+</div>
+
+
+<div id="main-app" style="display:none">
+<nav>
+  <div style="display:flex;align-items:center;gap:8px;margin-right:auto">
+    <span class="cockade" title="cocarde tricolore"></span>
+    <div class="nav-brand" style="margin-right:0">An II <span style="font-size:0.5rem;color:var(--accent);vertical-align:super">v64</span></div>
+  </div>
+  <div class="nav-tabs" style="overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-shrink:1;min-width:0">
+    <div class="nav-tab active" onclick="showScreen('home')">🏠 Главная</div>
+    <div class="nav-tab" onclick="showScreen('reader')">📖 Читать</div>
+    <div class="nav-tab" onclick="showScreen('dict')">📚 Слова</div>
+    <div class="nav-tab" onclick="showScreen('phrases')">💬 Фразы</div>
+    <div class="nav-tab" onclick="toggleMoreMenu()" style="white-space:nowrap">⋯ Ещё</div>
+    <div class="nav-tab" onclick="logoutProfile()" style="color:var(--text-dim);white-space:nowrap">⇠ Выйти</div>
+  </div>
+</nav>
+
+<!-- BOTTOM NAV — mobile only -->
+<div class="bottom-nav" id="bottom-nav">
+  <div class="bottom-nav-item active" id="bn-home" onclick="showScreen('home')">
+    <span class="bn-icon">🏠</span><span>Главная</span>
+  </div>
+  <div class="bottom-nav-item" id="bn-reader" onclick="showScreen('reader')">
+    <span class="bn-icon">📖</span><span>Читать</span>
+  </div>
+  <div class="bottom-nav-item" id="bn-dict" onclick="showScreen('dict')">
+    <span class="bn-icon">📚</span><span>Слова</span>
+  </div>
+  <div class="bottom-nav-item" id="bn-practice" onclick="showScreen('phrases')">
+    <span class="bn-icon">💬</span><span>Фразы</span>
+  </div>
+  <div class="bottom-nav-item" id="bn-more" onclick="toggleMoreMenu()">
+    <span class="bn-icon">⋯</span><span>Ещё</span>
+  </div>
+</div>
+
+<!-- MORE MENU — slides up on mobile -->
+<div id="more-menu" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:300;background:var(--surface);border-top:1px solid var(--border);border-radius:16px 16px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));">
+  <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+    <div onclick="showScreen('trainer');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">✏️</span>Тренажёр</div>
+    <div onclick="showScreen('study');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">🎧</span>Изучить</div>
+    <div onclick="showScreen('grammar');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📘</span>Правила</div>
+    <div onclick="showScreen('stats');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">📊</span>Статистика</div>
+    <div onclick="showScreen('leaderboard');closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:var(--text-muted)"><span style="font-size:1.6rem">🏆</span>Лидерборд</div>
+    <div onclick="logoutProfile();closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border-radius:12px;cursor:pointer;font-size:0.75rem;color:#e05555"><span style="font-size:1.6rem">⇠</span>Выйти</div>
+  </div>
+
+  <!-- Admin panel -->
+  <div id="more-admin-section" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:10px">⚙️ Админ</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button onclick="openRatePhrases()" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.85rem;color:var(--text);font-family:'IBM Plex Sans',sans-serif;text-align:left;">
+        <span style="font-size:1.2rem">🎯</span>
+        <div>
+          <div style="font-weight:500">Разметить фразы</div>
+          <div style="font-size:0.72rem;color:var(--text-muted)">Расставить уровни A1/A2/B1/B2 через DeepSeek</div>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Auto-speak toggle -->
+  <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-size:0.82rem;color:var(--text-muted)">🔊 Авто-озвучка при изучении</div>
+      <button id="auto-speak-btn" onclick="toggleAutoSpeak()"
+        style="padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--text-muted);font-size:0.78rem;cursor:pointer">
+        Выкл
+      </button>
+    </div>
+  </div>
+</div>
+<div id="more-overlay" onclick="closeMoreMenu()" style="display:none;position:fixed;inset:0;z-index:250;background:rgba(0,0,0,0.5)"></div>
+
+<main>
+
+<!-- LEADERBOARD -->
+<div id="screen-leaderboard" class="screen">
+  <div style="max-width:640px;margin:0 auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin-bottom:4px">🏆 Лидерборд</h2>
+        <div style="font-size:0.78rem;color:var(--text-muted)">Лучшие пользователи по точности</div>
+      </div>
+      <button class="btn btn-secondary" onclick="renderLeaderboard()" style="font-size:0.8rem;padding:7px 14px">🔄 Обновить</button>
+    </div>
+
+    <div id="leaderboard-loading" style="text-align:center;padding:40px;color:var(--text-muted)">Загружаем...</div>
+    <div id="leaderboard-list" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- CHANGELOG -->
+<div id="screen-changelog" class="screen">
+  <div style="max-width:640px;margin:0 auto;">
+    <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin-bottom:4px">Обновления</h2>
+    <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:28px">Что нового в приложении</div>
+
+    <div style="display:flex;flex-direction:column;gap:20px;">
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px 22px;">
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);margin-bottom:12px">Май 2025</div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">🎹 Виртуальная клавиатура AZERTY</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">Полная французская раскладка — андроидная клавиатура не появляется. Долгое нажатие на <b>a e i o u c</b> показывает акценты: à â é è ê ë... Переключение на родную клавиатуру кнопкой «⌨ Своя клавиатура».</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">🔤 Тренажёр существительных</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">183 слова по 12 темам (тело, еда, город, природа...). Кнопки <b>LE / LA</b>. Подсказка после ответа — правило рода по суффиксу. Режим «⚠️ Слабые».</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">🔗 Тренажёр предлогов</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">52 конструкции глагольного управления: <i>parler de, penser à, commencer à, arrêter de...</i> Выбор из 4 вариантов, пример с пропуском до ответа.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">📅 Spaced Repetition (SRS)</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">Алгоритм SM-2 как в Anki. Интервалы 1 → 6 → 15 → ... дней. Виджет на главной показывает сколько глаголов ждут повторения сегодня. Кнопка «✓ Уже знаю» — пометить знакомые глаголы.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">📝 500 фраз</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">5 фраз на каждый глагол с пропуском ___. Фильтры по глаголу, группе и времени.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">➕ 59 новых глаголов</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">База выросла до <b>190 глаголов</b>: apporter, envoyer, essayer, devenir, découvrir, traduire, arrêter, quitter и другие.</div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <div style="font-size:1rem;font-weight:600;margin-bottom:6px">📊 Статистика разделена</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">На главной и в статистике — глаголы и существительные считаются отдельно.</div>
+        </div>
+
+        <div>
+          <div style="font-size:1rem;font-weight:600;margin-bottom:10px">🔊 Установка французского голоса</div>
+          <div style="font-size:0.83rem;color:var(--text-muted);line-height:1.6;margin-bottom:10px">Без установленного французского голоса браузер говорит по-английски. Исправляется за 1 минуту:</div>
+          <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;font-size:0.8rem;line-height:1.9;color:var(--text-muted);">
+            <div>🤖 <b style="color:var(--text)">Android:</b> Настройки → Язык и ввод → Синтез речи → Google TTS → Установить голосовые данные → <b>Français</b></div>
+            <div>🍎 <b style="color:var(--text)">iOS:</b> Настройки → Универсальный доступ → Озвученный контент → Голоса → Français → скачать <b>Enhanced</b></div>
+            <div>🪟 <b style="color:var(--text)">Windows:</b> Настройки → Время и язык → Речь → Управление голосами → добавить <b>французский</b></div>
+            <div>🍏 <b style="color:var(--text)">macOS:</b> Системные настройки → Универсальный доступ → Озвученный контент → Управление голосами → <b>французский</b></div>
+          </div>
+          <div style="font-size:0.76rem;color:var(--text-dim);margin-top:8px">Также в меню ⋯ Ещё можно выбрать движок озвучки вручную и протестировать.</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="screen-home" class="screen active">
+  <section class="home-reader-first">
+    <div class="home-hello">
+      <div id="home-date" class="home-date"></div>
+      <h1>Bonjour, <em id="home-username">—</em> 👋</h1>
+      <p>Сегодня не «закрываем карточки», а берём понятный французский input: читаем, слушаем, чуть разбираем по делу.</p>
+    </div>
+
+    <div id="home-reader-continue" class="home-reader-continue"></div>
+
+    <div class="home-input-grid">
+      <button onclick="showScreen('reader')" class="home-input-card primary">
+        <span>📖</span><b>Продолжить чтение</b><small>книга / текст / EPUB</small>
+      </button>
+      <button onclick="showScreen('reader')" class="home-input-card">
+        <span>🎧</span><b>Слушать текст</b><small>абзац или глава</small>
+      </button>
+      <button onclick="showScreen('dict')" class="home-input-card">
+        <span>📚</span><b>Слова из чтения</b><small>по статусам и контекстам</small>
+      </button>
+      <button onclick="showScreen('phrases')" class="home-input-card">
+        <span>💬</span><b>Фразы</b><small>из реальных предложений</small>
+      </button>
+    </div>
+
+    <div class="home-input-stats">
+      <div><span id="home-books-count">0</span><small>текстов</small></div>
+      <div><span id="home-active-progress">0%</span><small>текущий</small></div>
+      <div><span id="home-viewed-words">0</span><small>слов открыто</small></div>
+      <div><span id="home-saved-words">0</span><small>сохранено</small></div>
+    </div>
+
+    <div class="home-method-card">
+      <div class="home-section-label">методика</div>
+      <b>1 цикл на сегодня</b>
+      <ol>
+        <li>Прочитать 5–15 абзацев без охоты на каждое слово.</li>
+        <li>Послушать те же абзацы.</li>
+        <li>Открыть только мешающие слова.</li>
+        <li>Разобрать грамматику только если предложение реально непонятно.</li>
+      </ol>
+    </div>
+
+    <div class="home-section-label">последние слова из чтения</div>
+    <div id="home-recent-reader-words" class="home-recent-words"></div>
+
+    <!-- Hidden legacy ids for compatibility -->
+    <div id="srs-widget" style="display:none"></div>
+    <div style="display:none">
+      <div id="home-today-tasks"></div>
+      <div id="ring-verbs"></div><div id="ring-verbs-pct"></div><div id="ring-verbs-sub"></div>
+      <div id="ring-nouns"></div><div id="ring-nouns-pct"></div><div id="ring-nouns-sub"></div>
+      <div id="ring-preps"></div><div id="ring-preps-pct"></div><div id="ring-preps-sub"></div>
+      <div id="hs-verbs"></div><div id="hs-total"></div><div id="hs-pct"></div><div id="hs-streak"></div>
+      <div id="hs-nouns"></div><div id="hs-noun-total"></div><div id="hs-noun-pct"></div>
+      <div id="home-stats-row"></div><div id="home-recommendations"></div>
+    </div>
+  </section>
+</div>
+
+
+
+<!-- READER -->
+<div id="screen-reader" class="screen">
+  <div class="reader-shell">
+    <div id="reader-library-view">
+      <div class="reader-hero">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <h2 class="reader-title">📖 Читать</h2>
+            <div class="reader-muted">Центр приложения: читаем понятный текст, слушаем абзацы, сохраняем только полезные слова и фразы.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="showReaderImportModal()" class="btn btn-primary" style="padding:9px 14px;font-size:0.85rem">＋ Добавить текст</button>
+            <button onclick="syncReaderCloudNow()" class="btn btn-secondary" style="padding:9px 14px;font-size:0.85rem">☁️ Синхронизация</button>
+            <button onclick="showReaderViewedWords()" class="btn btn-secondary" style="padding:9px 14px;font-size:0.85rem">👀 Просмотренные</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="reader-continue-card" style="display:none;margin-bottom:14px;"></div>
+
+      <div class="reader-card" style="margin-bottom:14px;">
+        <div style="font-size:0.68rem;letter-spacing:0.09em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:6px">как пользуемся</div>
+        <div class="reader-muted">Главное — читать и слушать понятный текст. Слова, перевод и грамматика открываются только когда мешают пониманию.</div>
+      </div>
+
+      <div id="reader-library-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:70px;"></div>
+    </div>
+
+    <div id="reader-reading-view" style="display:none;">
+      <div class="reader-toolbar">
+        <button onclick="readerBackToLibrary()" class="btn btn-secondary" style="padding:7px 12px;font-size:0.82rem">← Библиотека</button>
+        <div class="reader-chapter-controls" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="readerPrevChapter()" class="btn btn-secondary" style="padding:7px 12px;font-size:0.82rem">← Глава</button>
+          <button onclick="readerNextChapter()" class="btn btn-secondary" style="padding:7px 12px;font-size:0.82rem">Глава →</button>
+          <button onclick="toggleReaderTranslations()" class="btn btn-secondary reader-toggle-translations-btn" style="padding:7px 12px;font-size:0.82rem">👁️ показать помощь</button>
+        </div>
+      </div>
+
+      <div class="reader-card" style="margin-bottom:12px;">
+        <div id="reader-book-title" style="font-family:'Playfair Display',serif;font-size:1.35rem;font-weight:600;margin-bottom:3px"></div>
+        <div id="reader-chapter-title" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px"></div>
+        <div style="height:6px;background:var(--surface2);border-radius:999px;overflow:hidden;margin-bottom:8px">
+          <div id="reader-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:999px;transition:width .2s"></div>
+        </div>
+        <div id="reader-progress-text" style="font-size:0.72rem;color:var(--text-dim)"></div>
+      </div>
+
+      <div class="reader-action-bar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button onclick="readerSpeakCurrentParagraph()" class="btn btn-primary" style="padding:9px 12px;font-size:0.84rem">🔊 Абзац</button>
+        <button onclick="readerAction(event,'translate',null)" class="btn btn-secondary" style="padding:9px 12px;font-size:0.84rem">🌐 Перевод</button>
+        <button onclick="readerAction(event,'analyze',null)" class="btn btn-secondary" style="padding:9px 12px;font-size:0.84rem">🧩 Разобрать</button>
+        <button onclick="readerSpeakChapter()" class="btn btn-secondary" style="padding:9px 12px;font-size:0.84rem">🎧 Глава</button>
+        <button onclick="readerStopSpeech()" class="btn btn-secondary" style="padding:9px 12px;font-size:0.84rem">⏹ Стоп</button>
+        <button onclick="readerCopyCurrentParagraph()" class="btn btn-secondary" style="padding:9px 12px;font-size:0.84rem">📋 Абзац</button>
+        <button onclick="toggleReaderTranslations()" class="btn btn-secondary reader-toggle-translations-btn" style="padding:9px 12px;font-size:0.84rem">👁️ показать помощь</button>
+      </div>
+
+      <div class="reader-page">
+        <div id="reader-chapter-text" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+      <div class="reader-pager">
+        <button onclick="readerPrevParagraph()" class="btn btn-secondary">← Назад</button>
+        <button onclick="readerNextParagraph()" class="btn btn-primary">Дальше →</button>
+      </div>
+
+      <div class="reader-card" style="margin-top:14px;margin-bottom:80px">
+        <div style="font-size:0.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);font-weight:700;margin-bottom:8px">понятность главы</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="readerSetComprehension(1)" class="btn btn-secondary" style="padding:7px 10px;font-size:.8rem">1 мрак</button>
+          <button onclick="readerSetComprehension(2)" class="btn btn-secondary" style="padding:7px 10px;font-size:.8rem">2 общий смысл</button>
+          <button onclick="readerSetComprehension(3)" class="btn btn-secondary" style="padding:7px 10px;font-size:.8rem">3 нормально</button>
+          <button onclick="readerSetComprehension(4)" class="btn btn-secondary" style="padding:7px 10px;font-size:.8rem">4 легко</button>
+          <button onclick="readerSetComprehension(5)" class="btn btn-secondary" style="padding:7px 10px;font-size:.8rem">5 очень легко</button>
+        </div>
+        <div id="reader-comprehension-note" style="font-size:.74rem;color:var(--text-muted);margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GRAMMAR -->
+<div id="screen-grammar" class="screen">
+  <div class="grammar-nav">
+    <button class="grammar-btn active" onclick="setGrammar('present')">Présent</button>
+    <button class="grammar-btn" onclick="setGrammar('passe')">Passé composé</button>
+    <button class="grammar-btn" onclick="setGrammar('imparfait')">Imparfait</button>
+    <button class="grammar-btn" onclick="setGrammar('futur')">Futur simple</button>
+    <button class="grammar-btn" onclick="setGrammar('irregular')">Неправильные глаголы</button>
+    <button class="grammar-btn" onclick="setGrammar('reflexive')">Возвратные глаголы</button>
+  </div>
+
+  <!-- PRÉSENT -->
+  <div id="grammar-present" class="grammar-panel active">
+    <div class="grammar-block">
+      <h2>Présent de l'indicatif</h2>
+      <p class="subtitle">Настоящее время — самое основное время во французском</p>
+      <h4>Когда используется</h4>
+      <div class="when-box">
+        <strong>✓ Регулярные действия и привычки</strong> — Je mange à midi.<br>
+        <strong>✓ Факты и общие истины</strong> — Le soleil se lève à l'est.<br>
+        <strong>✓ Действие прямо сейчас</strong> — Je lis un livre en ce moment.<br>
+        <strong>✓ Будущее, которое точно произойдёт</strong> — Demain, je pars à Paris.
+      </div>
+      <h4>Образование — глаголы 1-й группы (-ER)</h4>
+      <div class="formation-box">
+        <div class="rule">инфинитив без -ER + окончание</div>
+        <div>parler → parl-</div>
+        <div>je parl<span style="color:var(--accent)">e</span> &nbsp; tu parl<span style="color:var(--accent)">es</span> &nbsp; il/elle parl<span style="color:var(--accent)">e</span></div>
+        <div>nous parl<span style="color:var(--accent)">ons</span> &nbsp; vous parl<span style="color:var(--accent)">ez</span> &nbsp; ils parl<span style="color:var(--accent)">ent</span></div>
+      </div>
+      <h4>Образование — глаголы 2-й группы (-IR)</h4>
+      <div class="formation-box">
+        <div class="rule">инфинитив без -IR + окончание (+ -iss- во мн.ч.)</div>
+        <div>finir → fin-</div>
+        <div>je fin<span style="color:var(--accent)">is</span> &nbsp; tu fin<span style="color:var(--accent)">is</span> &nbsp; il/elle fin<span style="color:var(--accent)">it</span></div>
+        <div>nous fin<span style="color:var(--accent)">issons</span> &nbsp; vous fin<span style="color:var(--accent)">issez</span> &nbsp; ils fin<span style="color:var(--accent)">issent</span></div>
+      </div>
+      <h4>Образование — глаголы 3-й группы (-RE)</h4>
+      <div class="formation-box">
+        <div class="rule">инфинитив без -RE + окончание</div>
+        <div>vendre → vend-</div>
+        <div>je vend<span style="color:var(--accent)">s</span> &nbsp; tu vend<span style="color:var(--accent)">s</span> &nbsp; il/elle vend<span style="color:var(--accent)">—</span></div>
+        <div>nous vend<span style="color:var(--accent)">ons</span> &nbsp; vous vend<span style="color:var(--accent)">ez</span> &nbsp; ils vend<span style="color:var(--accent)">ent</span></div>
+      </div>
+      <h4>Примеры</h4>
+      <ul class="example-list">
+        <li><span class="fr">Je travaille tous les jours.</span><span class="ru">Я работаю каждый день.</span></li>
+        <li><span class="fr">Elle finit son travail à 18h.</span><span class="ru">Она заканчивает работу в 18:00.</span></li>
+        <li><span class="fr">Nous vendons des livres.</span><span class="ru">Мы продаём книги.</span></li>
+        <li><span class="fr">Ils parlent français.</span><span class="ru">Они говорят по-французски.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- PASSÉ COMPOSÉ -->
+  <div id="grammar-passe" class="grammar-panel">
+    <div class="grammar-block">
+      <h2>Passé composé</h2>
+      <p class="subtitle">Прошедшее время — завершённые действия</p>
+      <h4>Когда используется</h4>
+      <div class="when-box blue">
+        <strong>✓ Однократное завершённое действие в прошлом</strong> — J'ai mangé une pomme.<br>
+        <strong>✓ Действие с точным указанием времени</strong> — Hier, il est parti à 8h.<br>
+        <strong>✓ Последовательность действий</strong> — Je suis entré, j'ai vu, j'ai compris.<br>
+        <strong>✗ НЕ для состояний или привычек</strong> — там Imparfait.
+      </div>
+      <h4>Образование = avoir/être + participe passé</h4>
+      <div class="formation-box">
+        <div class="rule">AVOIR + participe passé (большинство глаголов)</div>
+        <div>J'<span style="color:var(--ir)">ai</span> parlé &nbsp; tu <span style="color:var(--ir)">as</span> fini &nbsp; il <span style="color:var(--ir)">a</span> vendu</div>
+        <div>nous <span style="color:var(--ir)">avons</span> &nbsp; vous <span style="color:var(--ir)">avez</span> &nbsp; ils <span style="color:var(--ir)">ont</span></div>
+      </div>
+      <div class="formation-box">
+        <div class="rule">ÊTRE + participe passé (движение и рефлексивы)</div>
+        <div>je <span style="color:var(--re)">suis</span> allé(e) &nbsp; il <span style="color:var(--re)">est</span> venu &nbsp; elle <span style="color:var(--re)">est</span> partie</div>
+        <div class="ex">Глаголы с être: aller, venir, partir, arriver, entrer, sortir,<br>naître, mourir, rester, tomber, monter, descendre, passer, retourner</div>
+      </div>
+      <h4>Participe passé — как образуется</h4>
+      <div class="formation-box">
+        <div>-ER глаголы: parler → parl<span style="color:var(--accent)">é</span></div>
+        <div>-IR глаголы: finir → fin<span style="color:var(--accent)">i</span></div>
+        <div>-RE глаголы: vendre → vend<span style="color:var(--accent)">u</span></div>
+        <div class="ex">Неправильные: être→été, avoir→eu, faire→fait, voir→vu, venir→venu</div>
+      </div>
+      <h4>Примеры</h4>
+      <ul class="example-list">
+        <li><span class="fr">J'ai mangé une baguette ce matin.</span><span class="ru">Я съел багет этим утром.</span></li>
+        <li><span class="fr">Elle est arrivée à Paris hier.</span><span class="ru">Она приехала в Париж вчера.</span></li>
+        <li><span class="fr">Nous avons fini le projet.</span><span class="ru">Мы завершили проект.</span></li>
+        <li><span class="fr">Ils sont partis tôt.</span><span class="ru">Они ушли рано.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- IMPARFAIT -->
+  <div id="grammar-imparfait" class="grammar-panel">
+    <div class="grammar-block">
+      <h2>Imparfait</h2>
+      <p class="subtitle">Незавершённое прошлое — описания, привычки, фон</p>
+      <h4>Когда используется</h4>
+      <div class="when-box red">
+        <strong>✓ Прошлые привычки и повторяющиеся действия</strong> — Chaque été, nous allions à la mer.<br>
+        <strong>✓ Описания состояний в прошлом</strong> — Il faisait beau. Elle était triste.<br>
+        <strong>✓ Фоновое действие при passé composé</strong> — Je dormais quand il est arrivé.<br>
+        <strong>✓ Вежливые просьбы</strong> — Je voulais vous demander...
+      </div>
+      <h4>Образование — универсальное правило</h4>
+      <div class="formation-box">
+        <div class="rule">Берём nous présent → убираем -ons → добавляем окончание</div>
+        <div>parler: nous parlons → parl- → je parl<span style="color:var(--accent)">ais</span></div>
+        <div>finir: nous finissons → finiss- → je finiss<span style="color:var(--accent)">ais</span></div>
+        <div>faire: nous faisons → fais- → je fais<span style="color:var(--accent)">ais</span></div>
+      </div>
+      <div class="formation-box">
+        <div>je -<span style="color:var(--accent)">ais</span> &nbsp; tu -<span style="color:var(--accent)">ais</span> &nbsp; il/elle -<span style="color:var(--accent)">ait</span></div>
+        <div>nous -<span style="color:var(--accent)">ions</span> &nbsp; vous -<span style="color:var(--accent)">iez</span> &nbsp; ils -<span style="color:var(--accent)">aient</span></div>
+        <div class="ex">Исключение: être → j'étais (основа ét-)</div>
+      </div>
+      <h4>Passé composé vs Imparfait — главное отличие</h4>
+      <div class="when-box red">
+        <strong>Passé composé</strong> = что случилось (действие)<br>
+        <strong>Imparfait</strong> = как было (состояние, фон)<br>
+        <em>Il pleuvait quand je suis sorti.</em> — Шёл дождь (фон), когда я вышел (действие).
+      </div>
+      <h4>Примеры</h4>
+      <ul class="example-list">
+        <li><span class="fr">Quand j'étais enfant, je jouais au foot.</span><span class="ru">Когда я был ребёнком, я играл в футбол.</span></li>
+        <li><span class="fr">Il faisait froid et il neigeait.</span><span class="ru">Было холодно и шёл снег.</span></li>
+        <li><span class="fr">Je lisais quand tu m'as appelé.</span><span class="ru">Я читал, когда ты мне позвонил.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- FUTUR SIMPLE -->
+  <div id="grammar-futur" class="grammar-panel">
+    <div class="grammar-block">
+      <h2>Futur simple</h2>
+      <p class="subtitle">Будущее время — планы, обещания, прогнозы</p>
+      <h4>Когда используется</h4>
+      <div class="when-box purple">
+        <strong>✓ Планы и обещания</strong> — Je reviendrai demain.<br>
+        <strong>✓ Предсказания и прогнозы</strong> — Il fera beau demain.<br>
+        <strong>✓ После si + présent</strong> — Si tu viens, nous irons au cinéma.<br>
+        <strong>✓ Формальный стиль</strong> — Le président parlera à 20h.
+      </div>
+      <h4>Образование — почти всегда от инфинитива</h4>
+      <div class="formation-box">
+        <div class="rule">инфинитив (для -RE: без последней -e) + окончание avoir</div>
+        <div>parler → parler<span style="color:var(--accent)">ai</span></div>
+        <div>finir → finir<span style="color:var(--accent)">ai</span></div>
+        <div>vendre → vendr<span style="color:var(--accent)">ai</span></div>
+      </div>
+      <div class="formation-box">
+        <div>je -<span style="color:var(--accent)">ai</span> &nbsp; tu -<span style="color:var(--accent)">as</span> &nbsp; il/elle -<span style="color:var(--accent)">a</span></div>
+        <div>nous -<span style="color:var(--accent)">ons</span> &nbsp; vous -<span style="color:var(--accent)">ez</span> &nbsp; ils -<span style="color:var(--accent)">ont</span></div>
+      </div>
+      <h4>Неправильные основы — нужно запомнить</h4>
+      <div class="formation-box">
+        <div>être → <span style="color:var(--accent)">ser-</span> &nbsp; avoir → <span style="color:var(--accent)">aur-</span> &nbsp; aller → <span style="color:var(--accent)">ir-</span></div>
+        <div>faire → <span style="color:var(--accent)">fer-</span> &nbsp; venir → <span style="color:var(--accent)">viendr-</span> &nbsp; voir → <span style="color:var(--accent)">verr-</span></div>
+        <div>pouvoir → <span style="color:var(--accent)">pourr-</span> &nbsp; vouloir → <span style="color:var(--accent)">voudr-</span> &nbsp; savoir → <span style="color:var(--accent)">saur-</span></div>
+      </div>
+      <h4>Примеры</h4>
+      <ul class="example-list">
+        <li><span class="fr">Demain, je partirai tôt.</span><span class="ru">Завтра я уйду рано.</span></li>
+        <li><span class="fr">Elle sera médecin.</span><span class="ru">Она будет врачом.</span></li>
+        <li><span class="fr">Nous irons en France l'été prochain.</span><span class="ru">Мы поедем во Францию следующим летом.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- IRREGULAR -->
+  <div id="grammar-irregular" class="grammar-panel">
+    <div class="grammar-block">
+      <h2>Неправильные глаголы</h2>
+      <p class="subtitle">Не поддаются стандартным правилам — но у них есть группы!</p>
+      <h4>Группы по схожести спряжения</h4>
+      <div class="irr-groups">
+        <div class="irr-group">
+          <h5>Группа ÊTRE / AVOIR</h5>
+          <p class="verb-list">être, avoir</p>
+          <p>Базовые глаголы. Спрягаются полностью нерегулярно — просто заучить.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа ALLER</h5>
+          <p class="verb-list">aller, s'en aller</p>
+          <p>je vais, tu vas, il va, nous allons, vous allez, ils vont. Корень меняется радикально.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа VENIR / TENIR</h5>
+          <p class="verb-list">venir, devenir, revenir, tenir, obtenir, appartenir, contenir</p>
+          <p>je viens/tiens, nous venons/tenons, ils viennent/tiennent. Закономерность: -iens/-ient/-iennent.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа PRENDRE</h5>
+          <p class="verb-list">prendre, comprendre, apprendre, reprendre, surprendre</p>
+          <p>je prends, nous prenons, ils prennent. Во мн.ч. — удвоение n.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа PARTIR / SORTIR</h5>
+          <p class="verb-list">partir, sortir, dormir, servir, sentir, mentir</p>
+          <p>je pars/sors, nous partons/sortons. В ед.ч. отбрасывается конечный согласный основы.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа VOIR / CROIRE</h5>
+          <p class="verb-list">voir, prévoir, revoir, croire</p>
+          <p>je vois, nous voyons, ils voient. Основа меняется: voi-/voy-.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа FAIRE</h5>
+          <p class="verb-list">faire, défaire, refaire, satisfaire</p>
+          <p>je fais, nous faisons, vous faites, ils font. Vous faites — исключение из правила -ez!</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа METTRE / BATTRE</h5>
+          <p class="verb-list">mettre, permettre, promettre, battre, combattre</p>
+          <p>je mets, nous mettons. В ед.ч. только одно t: je mets, il met.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа ÉCRIRE / LIRE</h5>
+          <p class="verb-list">écrire, décrire, inscrire, lire, élire, relire</p>
+          <p>j'écris/lis, nous écrivons/lisons. Схожий паттерн уменьшения основы.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа POUVOIR / VOULOIR / SAVOIR</h5>
+          <p class="verb-list">pouvoir, vouloir, savoir, valoir</p>
+          <p>Модальные. je peux/veux/sais. Особенность: je peux → puis-je? (инверсия).</p>
+        </div>
+        <div class="irr-group">
+          <h5>Группа OUVRIR / OFFRIR</h5>
+          <p class="verb-list">ouvrir, couvrir, découvrir, offrir, souffrir</p>
+          <p>Спрягаются как -ER глаголы! j'ouvre, tu ouvres — без -s в 1-м лице.</p>
+        </div>
+        <div class="irr-group">
+          <h5>Groupe CONNAÎTRE / NAÎTRE</h5>
+          <p class="verb-list">connaître, reconnaître, paraître, naître</p>
+          <p>je connais, il connaît (с circonflexe перед t). Основа: connaiss- во мн.ч.</p>
+        </div>
+      </div>
+      <br>
+      <h4>Ключевые глаголы — présent</h4>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+        <div>
+          <table class="conj-table">
+            <tr><td colspan="2" style="color:var(--accent);font-weight:500;padding-bottom:6px;">être</td></tr>
+            <tr><td>je</td><td>suis</td></tr><tr><td>tu</td><td>es</td></tr>
+            <tr><td>il</td><td>est</td></tr><tr><td>nous</td><td>sommes</td></tr>
+            <tr><td>vous</td><td>êtes</td></tr><tr><td>ils</td><td>sont</td></tr>
+          </table>
+        </div>
+        <div>
+          <table class="conj-table">
+            <tr><td colspan="2" style="color:var(--accent);font-weight:500;padding-bottom:6px;">avoir</td></tr>
+            <tr><td>je</td><td>ai</td></tr><tr><td>tu</td><td>as</td></tr>
+            <tr><td>il</td><td>a</td></tr><tr><td>nous</td><td>avons</td></tr>
+            <tr><td>vous</td><td>avez</td></tr><tr><td>ils</td><td>ont</td></tr>
+          </table>
+        </div>
+        <div>
+          <table class="conj-table">
+            <tr><td colspan="2" style="color:var(--accent);font-weight:500;padding-bottom:6px;">aller</td></tr>
+            <tr><td>je</td><td>vais</td></tr><tr><td>tu</td><td>vas</td></tr>
+            <tr><td>il</td><td>va</td></tr><tr><td>nous</td><td>allons</td></tr>
+            <tr><td>vous</td><td>allez</td></tr><tr><td>ils</td><td>vont</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ВОЗВРАТНЫЕ ГЛАГОЛЫ -->
+  <div id="grammar-reflexive" class="grammar-panel">
+    <div class="grammar-block">
+      <h2>Verbes pronominaux</h2>
+      <p class="subtitle">Возвратные глаголы — действие направлено на самого субъекта</p>
+
+      <h4>Что это такое</h4>
+      <div class="when-box">
+        Возвратные глаголы используют местоимение <strong>me / te / se / nous / vous / se</strong> перед глаголом.<br>
+        <strong>se laver</strong> = мыться (буквально: мыть себя)<br>
+        <strong>s'appeler</strong> = называться / зваться<br>
+        В инфинитиве всегда стоит <strong>se</strong> (или <strong>s'</strong> перед гласной).
+      </div>
+
+      <h4>Спряжение в présent</h4>
+      <div class="formation-box">
+        <div class="rule">se lever — вставать</div>
+        <div>je <span style="color:var(--accent)">me</span> lève &nbsp; tu <span style="color:var(--accent)">te</span> lèves &nbsp; il <span style="color:var(--accent)">se</span> lève</div>
+        <div>nous <span style="color:var(--accent)">nous</span> levons &nbsp; vous <span style="color:var(--accent)">vous</span> levez &nbsp; ils <span style="color:var(--accent)">se</span> lèvent</div>
+      </div>
+      <div class="formation-box">
+        <div class="rule">s'appeler — называться (перед гласной: s')</div>
+        <div>je <span style="color:var(--accent)">m'</span>appelle &nbsp; tu <span style="color:var(--accent)">t'</span>appelles &nbsp; il <span style="color:var(--accent)">s'</span>appelle</div>
+        <div>nous <span style="color:var(--accent)">nous</span> appelons &nbsp; vous <span style="color:var(--accent)">vous</span> appelez &nbsp; ils <span style="color:var(--accent)">s'</span>appellent</div>
+      </div>
+
+      <h4>Passé composé — всегда с ÊTRE</h4>
+      <div class="when-box blue">
+        Все возвратные глаголы образуют passé composé с <strong>être</strong>.<br>
+        Причастие согласуется с подлежащим в роде и числе:<br>
+        <em>Il s'est levé.</em> — <em>Elle s'est levée.</em> — <em>Ils se sont levés.</em>
+      </div>
+      <div class="formation-box">
+        <div>je <span style="color:var(--ir)">me suis</span> levé(e)</div>
+        <div>tu <span style="color:var(--ir)">t'es</span> levé(e)</div>
+        <div>il <span style="color:var(--ir)">s'est</span> levé &nbsp;/&nbsp; elle <span style="color:var(--ir)">s'est</span> levée</div>
+        <div>nous <span style="color:var(--ir)">nous sommes</span> levé(e)s</div>
+        <div>vous <span style="color:var(--ir)">vous êtes</span> levé(e)(s)</div>
+        <div>ils <span style="color:var(--ir)">se sont</span> levés &nbsp;/&nbsp; elles <span style="color:var(--ir)">se sont</span> levées</div>
+      </div>
+
+      <h4>Отрицание</h4>
+      <div class="formation-box">
+        <div class="rule">ne ... pas обрамляет местоимение + глагол</div>
+        <div>Je <span style="color:var(--re)">ne</span> me lève <span style="color:var(--re)">pas</span> tôt.</div>
+        <div>Il <span style="color:var(--re)">ne</span> s'est <span style="color:var(--re)">pas</span> levé.</div>
+      </div>
+
+      <h4>Три типа возвратных глаголов</h4>
+      <div class="irr-groups" style="grid-template-columns:repeat(3,1fr)">
+        <div class="irr-group">
+          <h5>Собственно возвратные</h5>
+          <p>Действие на себя.<br><span class="verb-list">se laver, se coiffer, s'habiller, se regarder</span></p>
+        </div>
+        <div class="irr-group">
+          <h5>Взаимные</h5>
+          <p>Действие друг на друга.<br><span class="verb-list">se parler, se voir, se rencontrer, s'aimer</span></p>
+        </div>
+        <div class="irr-group">
+          <h5>Идиоматические</h5>
+          <p>Особый смысл.<br><span class="verb-list">s'en aller (уходить), se passer (происходить), se souvenir (помнить)</span></p>
+        </div>
+      </div>
+
+      <h4>Примеры</h4>
+      <ul class="example-list">
+        <li><span class="fr">Je me réveille à 7h.</span><span class="ru">Я просыпаюсь в 7 часов.</span></li>
+        <li><span class="fr">Elle s'est couchée tard.</span><span class="ru">Она легла поздно.</span></li>
+        <li><span class="fr">Nous nous souvenons de toi.</span><span class="ru">Мы тебя помним.</span></li>
+        <li><span class="fr">Ils se sont mariés en juin.</span><span class="ru">Они поженились в июне.</span></li>
+        <li><span class="fr">Tu te dépêches?</span><span class="ru">Ты торопишься?</span></li>
+        <li><span class="fr">Comment vous appelez-vous?</span><span class="ru">Как вас зовут?</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- TRAINER -->
+<div id="screen-trainer" class="screen">
+
+  <!-- Mode switcher -->
+  <div style="display:flex;gap:0;margin-bottom:16px;background:var(--surface2);border-radius:10px;padding:3px;">
+    <button id="mode-verbs-btn" onclick="setTrainerMode('verbs')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:var(--accent);color:#f5ecd8;font-weight:500">
+      ✏️ Глаголы
+    </button>
+    <button id="mode-nouns-btn" onclick="setTrainerMode('nouns')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      📦 Слова
+    </button>
+    <button id="mode-preps-btn" onclick="setTrainerMode('preps')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      🔗 Предлоги
+    </button>
+    <button id="mode-nums-btn" onclick="setTrainerMode('numbers')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:0.75rem;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      🔢 Числа
+    </button>
+  </div>
+
+  <!-- VERBS MODE -->
+  <div id="trainer-verbs-mode">
+  <div class="trainer-controls">
+    <select class="select-control" id="filter-group" onchange="exitReviewMode()">
+      <option value="all">Все группы</option>
+      <option value="er">-ER глаголы</option>
+      <option value="ir">-IR глаголы</option>
+      <option value="re">-RE глаголы</option>
+      <option value="irr">Неправильные</option>
+      <option value="ref">Возвратные</option>
+    </select>
+    <select class="select-control" id="filter-tense" onchange="exitReviewMode()">
+      <option value="present">Présent</option>
+      <option value="passe">Passé composé</option>
+      <option value="imparfait">Imparfait</option>
+      <option value="futur">Futur simple</option>
+      <option value="plus_que_parfait">Plus-que-parfait</option>
+      <option value="conditionnel">Conditionnel présent</option>
+      <option value="subjonctif">Subjonctif présent</option>
+      <option value="imperatif">Impératif</option>
+      <option value="passe_simple">Passé simple</option>
+      <option value="all">Все времена</option>
+    </select>
+    <select class="select-control" id="filter-mode">
+      <option value="type">Вводить ответ</option>
+      <option value="recall">Вспомнить и проверить</option>
+    </select>
+    <button class="btn btn-secondary" onclick="openVerbPicker()" style="white-space:nowrap">📋 Выбрать глаголы</button>
+    <button class="btn btn-secondary" onclick="resetTrainer()" style="margin-left:auto">↻ Следующий</button>
+  </div>
+
+  <!-- Custom selection banner -->
+  <div id="custom-selection-banner" style="display:none;background:var(--ir-dim);border:1px solid var(--ir);border-radius:8px;padding:10px 18px;font-size:0.82rem;color:var(--ir);margin-bottom:20px;align-items:center;justify-content:space-between;">
+    <span id="custom-selection-label">Выбрано: 0 глаголов</span>
+    <button onclick="clearVerbSelection()" style="background:none;border:1px solid var(--ir);border-radius:6px;padding:4px 12px;color:var(--ir);cursor:pointer;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;margin-left:16px">✕ Сбросить</button>
+  </div>
+
+  <div id="review-banner" class="review-mode-banner">
+    <span>🔁 Режим повторения слабых глаголов — только те, где точность ниже 60%</span>
+    <button onclick="exitReviewMode()" style="background:none;border:1px solid var(--irr);border-radius:6px;padding:4px 12px;color:var(--irr);cursor:pointer;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;white-space:nowrap;margin-left:16px">✕ Выйти</button>
+  </div>
+
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="trainer-progress" style="width:0%"></div>
+  </div>
+
+  <div class="score-display">
+    <div class="score-item"><div class="num score-good" id="score-good">0</div><div class="lbl">верно</div></div>
+    <div class="score-item"><div class="num score-bad" id="score-bad">0</div><div class="lbl">ошибок</div></div>
+    <div class="score-item"><div class="num score-streak" id="score-streak">0</div><div class="lbl">серия</div></div>
+  </div>
+
+  <!-- SRS session: shows form progress + "понял паттерн" skip -->
+  <div id="srs-form-bar" style="display:none;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+    <span id="srs-form-progress" style="font-size:0.82rem;color:var(--text-muted)">Формы: 0/6</span>
+    <button onclick="skipPattern()" style="background:none;border:1px solid var(--accent);border-radius:6px;padding:5px 12px;color:var(--accent);cursor:pointer;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;white-space:nowrap">✓ Понял паттерн</button>
+  </div>
+
+  <div class="trainer-card" id="trainer-card">
+    <div class="group-badge" id="card-badge">—</div>
+    <div style="display:flex;align-items:center;gap:12px;justify-content:center;">
+      <div class="verb-display" id="card-verb">—</div>
+      <button onclick="var v=getCurrentVerb&&getCurrentVerb(); if(v)speak(v.inf);" title="Произнести" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">🔊</button>
+    </div>
+    <div class="verb-meaning" id="card-meaning">—</div>
+    <div class="verb-meta" id="card-meta">—</div>
+    <!-- Grammar rule toggle -->
+    <div style="margin-top:8px;">
+      <button id="rule-toggle-btn" onclick="toggleRule()" style="background:none;border:1px solid var(--border);border-radius:16px;padding:6px 14px;font-size:0.75rem;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Sans',sans-serif">💡 Правило</button>
+      <div id="rule-box" style="display:none;margin-top:10px;padding:14px 18px;background:rgba(166,42,33,0.06);border:1px solid var(--accent);border-radius:8px;font-size:0.92rem;color:var(--text);line-height:1.9;font-family:'IBM Plex Sans',sans-serif;text-align:left;max-width:380px;margin-left:auto;margin-right:auto"></div>
+    </div>
+    <div class="pronoun-display" id="card-pronoun">—</div>
+    <div class="context-example" id="card-context"></div>
+  </div>
+
+  <!-- Empty state — shown instead of card when review has no weak verbs -->
+  <div id="no-weak-state" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;text-align:center;min-height:200px;align-items:center;justify-content:center;flex-direction:column;gap:12px;">
+    <div style="font-size:2.4rem">🎉</div>
+    <div style="font-size:1.1rem;color:var(--text)">Слабых глаголов нет</div>
+    <div style="font-size:0.85rem;color:var(--text-muted);max-width:360px">Потренируйся ещё — сюда попадут глаголы с точностью ниже 60% после минимум 2 попыток</div>
+    <button class="btn btn-primary" onclick="exitReviewMode()" style="margin-top:8px">Перейти в обычный режим</button>
+  </div>
+
+  <div id="srs-complete-state" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;text-align:center;min-height:200px;flex-direction:column;align-items:center;justify-content:center;gap:12px;">
+    <div style="font-size:2.6rem">🎉</div>
+    <div style="font-size:1.3rem;font-weight:600;color:var(--text)">Повторение завершено!</div>
+    <div style="font-size:0.9rem;color:var(--text-muted)">Все глаголы на сегодня пройдены</div>
+    <button class="btn btn-primary" onclick="showScreen('home')" style="margin-top:8px">← На главную</button>
+  </div>
+
+  <div class="answer-area" id="type-area">
+    <input type="text" class="answer-input" id="answer-input" inputmode="none" placeholder="введи форму глагола..." autocomplete="off" autocorrect="off" spellcheck="false" onkeydown="handleKey(event)">
+    <button class="btn btn-primary" onclick="checkAnswer()">Проверить</button>
+  </div>
+
+  <div class="feedback-row" id="feedback-row">
+    <button class="hint-btn" id="hint-btn" onclick="showHint()">💡 Подсказка (−1)</button>
+    <button class="hint-btn" onclick="markAsKnown()" style="color:var(--good);border-color:var(--good)">✓ Уже знаю</button>
+  </div>
+
+  <div style="text-align:right;margin-top:4px"><button class="kb-toggle-btn" id="kb-toggle-main" onclick="toggleKbMode('main')">⌨ Своя клавиатура</button></div>
+  <div class="fr-keyboard" id="fr-kb-main"></div>
+  <div class="fr-keyboard-spacer" id="fr-kb-main-spacer"></div>
+
+  <div id="recall-area" style="display:none;text-align:center;margin-bottom:16px;">
+    <div id="recall-step1">
+      <button class="btn btn-secondary" onclick="revealRecall()" style="font-size:0.9rem;padding:14px 32px;letter-spacing:0.06em">👁 Показать ответ</button>
+    </div>
+    <div id="recall-step2" style="display:none;">
+      <div id="recall-answer" style="font-family:'IBM Plex Mono',monospace;font-size:1.6rem;color:var(--accent);margin-bottom:8px;"></div>
+      <div id="recall-example" style="font-size:0.82rem;color:var(--text-muted);font-style:italic;margin-bottom:20px;"></div>
+      <div style="display:flex;gap:12px;justify-content:center;">
+        <button class="btn btn-danger" onclick="recallResult(1)" style="flex:1;padding:10px 8px;font-size:0.82rem">✗ Забыл</button>
+        <button class="btn btn-secondary" onclick="recallResult(3)" style="flex:1;padding:10px 8px;font-size:0.82rem">🤔 С трудом</button>
+        <button class="btn btn-primary" onclick="recallResult(4)" style="flex:1;padding:10px 8px;font-size:0.82rem">✓ Легко</button>
+      </div>
+    </div>
+  </div>
+</div><!-- end trainer-verbs-mode -->
+
+  <!-- NOUNS MODE -->
+  <div id="trainer-nouns-mode" style="display:none;">
+    <!-- Noun train mode tabs -->
+    <div style="display:flex;gap:4px;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:12px;">
+      <button id="ntab-article" onclick="setNounTrainMode('article')" style="flex:1;padding:6px 4px;border:none;border-radius:7px;font-size:0.72rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;background:var(--accent);color:#f5ecd8;font-weight:600;transition:all 0.2s">🎯 Артикль</button>
+      <button id="ntab-plural" onclick="setNounTrainMode('plural')" style="flex:1;padding:6px 4px;border:none;border-radius:7px;font-size:0.72rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;background:none;color:var(--text-muted);transition:all 0.2s">📝 Форма</button>
+      <button id="ntab-match" onclick="setNounTrainMode('match')" style="flex:1;padding:6px 4px;border:none;border-radius:7px;font-size:0.72rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;background:none;color:var(--text-muted);transition:all 0.2s">🔗 Пары</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+      <select class="select-control" id="noun-theme" onchange="nounWeakMode=false;nounNextCard()">
+        <option value="all">Все темы</option>
+        <option value="corps">🫀 Тело</option>
+        <option value="famille">👨‍👩‍👧 Семья</option>
+        <option value="maison">🏠 Дом</option>
+        <option value="nourriture">🍎 Еда</option>
+        <option value="ville">🏙 Город</option>
+        <option value="transport">🚗 Транспорт</option>
+        <option value="nature">🌿 Природа</option>
+        <option value="travail">💼 Работа</option>
+        <option value="temps">⏰ Время</option>
+        <option value="vêtements">👕 Одежда</option>
+        <option value="animaux">🐾 Животные</option>
+        <option value="divers">📦 Разное</option>
+      </select>
+      <button id="noun-weak-btn" class="btn btn-secondary" onclick="toggleNounWeak()" style="font-size:0.78rem;padding:6px 12px;white-space:nowrap">⚠️ Слабые</button>
+      <div id="noun-count" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto"></div>
+    </div>
+    <div class="score-display" style="margin-bottom:16px;">
+      <div class="score-item"><div class="num score-good" id="nscore2-good">0</div><div class="lbl">верно</div></div>
+      <div class="score-item"><div class="num score-bad" id="nscore2-bad">0</div><div class="lbl">ошибок</div></div>
+      <div class="score-item"><div class="num score-streak" id="nscore2-streak">0</div><div class="lbl">серия</div></div>
+    </div>
+
+    <!-- ARTICLE MODE -->
+    <div id="noun-mode-article">
+      <div class="trainer-card" id="noun-card" style="min-height:200px;">
+        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:16px" id="noun-theme-label">—</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.8rem;color:var(--text);margin-bottom:8px;line-height:1" id="noun-word">—</div>
+        <div style="font-size:0.85rem;color:var(--text-muted)" id="noun-meaning">—</div>
+        <button onclick="speak(document.getElementById('noun-word').textContent)" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;margin:12px auto 0;">🔊</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;" id="noun-answer-area">
+        <button onclick="checkNoun('m')" style="padding:18px;font-size:1.5rem;font-family:'Playfair Display',serif;font-style:italic;border:2px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;transition:all 0.2s;touch-action:manipulation">le ___</button>
+        <button onclick="checkNoun('f')" style="padding:18px;font-size:1.5rem;font-family:'Playfair Display',serif;font-style:italic;border:2px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;transition:all 0.2s;touch-action:manipulation">la ___</button>
+      </div>
+      <div id="noun-feedback" style="min-height:48px;display:flex;gap:10px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
+    </div>
+
+    <!-- PLURAL MODE -->
+    <div id="noun-mode-plural" style="display:none;">
+      <div class="trainer-card" style="min-height:160px;text-align:center;padding:24px 20px;">
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:10px">Напиши форму множественного числа:</div>
+        <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2rem;margin-bottom:4px" id="plural-word">—</div>
+        <div style="font-size:0.82rem;color:var(--text-muted)" id="plural-meaning">—</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <input id="plural-input" type="text" autocomplete="off" autocorrect="off" spellcheck="false"
+          placeholder="les ..."
+          onkeydown="if(event.key==='Enter')checkNounPlural()"
+          style="flex:1;padding:12px 16px;background:var(--surface2);border:2px solid var(--border);border-radius:10px;color:var(--text);font-family:'Playfair Display',serif;font-style:italic;font-size:1.1rem;outline:none;transition:border-color 0.2s"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <button onclick="checkNounPlural()" style="padding:12px 18px;background:var(--accent);color:#f5ecd8;border:none;border-radius:10px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem">OK</button>
+      </div>
+      <div id="plural-feedback" style="min-height:48px;display:flex;gap:10px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
+    </div>
+
+    <!-- MATCH MODE -->
+    <div id="noun-mode-match" style="display:none;">
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;text-align:center">Сопоставь слово с переводом</div>
+      <div id="match-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+      <div id="match-feedback" style="min-height:36px;text-align:center;margin-top:10px;font-size:0.85rem;"></div>
+    </div>
+  </div>
+
+  <!-- PREPS MODE -->
+  <div id="trainer-preps-mode" style="display:none;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+      <select class="select-control" id="prep-group" onchange="prepNextCard()">
+        <option value="all">Все типы</option>
+        <option value="a_inf">verbe + à + inf</option>
+        <option value="de_inf">verbe + de + inf</option>
+        <option value="a_nom">verbe + à + nom</option>
+        <option value="de_nom">verbe + de + nom</option>
+        <option value="other">sur / pour / avec...</option>
+      </select>
+      <div id="prep-count" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto"></div>
+    </div>
+
+    <div class="score-display" style="margin-bottom:16px;">
+      <div class="score-item"><div class="num score-good" id="pscore-good">0</div><div class="lbl">верно</div></div>
+      <div class="score-item"><div class="num score-bad" id="pscore-bad">0</div><div class="lbl">ошибок</div></div>
+      <div class="score-item"><div class="num score-streak" id="pscore-streak">0</div><div class="lbl">серия</div></div>
+    </div>
+
+    <div class="trainer-card" id="prep-card" style="min-height:180px;">
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2rem;color:var(--text);margin-bottom:8px" id="prep-verb">—</div>
+      <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px" id="prep-ru">—</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:1.1rem;color:var(--text);margin-bottom:4px" id="prep-example-blank">—</div>
+      <div style="font-size:0.78rem;color:var(--text-dim);font-style:italic" id="prep-exru">—</div>
+      <button onclick="speak(currentPrep?.example)" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;margin:10px auto 0;">🔊</button>
+    </div>
+
+    <!-- Answer buttons — shown dynamically -->
+    <div id="prep-answer-area" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px;"></div>
+    <div id="prep-feedback" style="min-height:48px;display:flex;gap:10px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
+  </div><!-- end trainer-preps-mode -->
+
+  <!-- NUMBERS MODE -->
+  <div id="trainer-numbers-mode" style="display:none;">
+  <div id="numbers-settings" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px;">
+    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:14px">Диапазон чисел</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:0.82rem;color:var(--text-muted)">от</label>
+        <input id="num-from" type="number" value="0" min="0" max="999999" style="width:90px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:0.82rem;color:var(--text-muted)">до</label>
+        <input id="num-to" type="number" value="100" min="1" max="999999" style="width:90px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.9rem;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,20)">0–20</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,100)">0–100</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,1000)">0–1000</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(1000,10000)">1000–10000</button>
+      <button class="btn btn-secondary" style="font-size:0.78rem;padding:6px 14px" onclick="setNumRange(0,999999)">Любое</button>
+    </div>
+  </div>
+  <div class="score-display" style="margin-bottom:20px;">
+    <div class="score-item"><div class="num score-good" id="nscore-good">0</div><div class="lbl">верно</div></div>
+    <div class="score-item"><div class="num score-bad" id="nscore-bad">0</div><div class="lbl">ошибок</div></div>
+    <div class="score-item"><div class="num score-streak" id="nscore-streak">0</div><div class="lbl">серия</div></div>
+  </div>
+  <div class="trainer-card" id="num-card" style="min-height:180px;">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px">Напиши словами по-французски</div>
+    <div id="num-display" style="font-family:'Playfair Display',serif;font-size:4rem;color:var(--text);line-height:1;margin-bottom:8px;">—</div>
+    <button id="num-speak-btn" onclick="speakCurrentNumber()" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;margin:0 auto;transition:all 0.2s">🔊</button>
+  </div>
+  <div class="answer-area" style="margin-top:16px;">
+    <input type="text" class="answer-input" id="num-input" inputmode="none" placeholder="ex: vingt-deux..." autocomplete="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter')checkNumber()">
+    <button class="btn btn-primary" onclick="checkNumber()">Проверить</button>
+  </div>
+  <div style="text-align:right;margin-top:6px"><button class="kb-toggle-btn" id="kb-toggle-num" onclick="toggleKbMode('num')">⌨ Своя клавиатура</button></div>
+  <div class="fr-keyboard" id="fr-kb-num"></div>
+  <div class="fr-keyboard-spacer" id="fr-kb-num-spacer"></div>
+  <div id="num-feedback" style="min-height:52px;display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
+  </div><!-- end trainer-numbers-mode -->
+
+</div><!-- end screen-trainer -->
+
+<!-- STATS -->
+<div id="screen-stats" class="screen">
+  <div id="stats-empty" class="empty-stats" style="display:none">
+    <p>Ещё нет данных. Начни тренировку!</p>
+    <button class="btn btn-primary" onclick="showScreen('trainer')">Начать тренировку</button>
+  </div>
+  <div id="stats-content">
+    <div class="stats-grid">
+      <div class="stats-big-card" style="grid-column:span 2">
+        <h3>Точность по временам</h3>
+        <div id="tense-stats"></div>
+      </div>
+      <div class="stats-big-card">
+        <h3>Серия дней</h3>
+        <div class="streak-display">
+          <div class="streak-num" id="stat-streak">0</div>
+          <div class="streak-label">дней подряд</div>
+          <div class="streak-best" id="stat-streak-best">Рекорд: 0</div>
+        </div>
+        <div style="text-align:center;margin-top:16px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.82rem;color:var(--text-muted)" id="stat-total-label">Всего попыток: 0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-bottom:16px;">Слабые глаголы (ниже 60%)</div>
+    <div class="stats-big-card" style="margin-bottom:28px;">
+      <div id="weak-verbs-list"></div>
+    </div>
+
+    <div class="section-title" style="margin-bottom:16px;">Все глаголы — по точности</div>
+    <div class="stats-big-card" style="margin-bottom:28px;">
+      <div class="verb-stat-list" id="all-verb-stats"></div>
+    </div>
+
+    <div class="reset-area">
+      <button class="btn btn-danger" onclick="confirmReset()">Сбросить всю статистику</button>
+    </div>
+  </div>
+</div>
+
+<!-- DICTIONARY -->
+<div id="screen-dict" class="screen">
+
+  <!-- Type switcher -->
+  <div style="display:flex;gap:4px;background:var(--surface2);border-radius:10px;padding:4px;margin-bottom:14px;">
+    <button id="dict-type-verbs" onclick="setDictType('verbs')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all 0.2s;background:var(--accent);color:#f5ecd8;font-weight:600">
+      ✏️ Глаголы
+    </button>
+    <button id="dict-type-nouns" onclick="setDictType('nouns')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      📦 Слова
+    </button>
+    <button id="dict-type-preps" onclick="setDictType('preps')"
+      style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      🔗 Предлоги
+    </button>
+  </div>
+
+  <!-- Search row -->
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+    <div style="position:relative;flex:1;">
+      <input id="dict-search" type="text" placeholder="Поиск слова или конструкции..."
+        oninput="onDictSearch()"
+        style="width:100%;padding:11px 36px 11px 40px;background:var(--surface);border:2px solid var(--border);
+               border-radius:10px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;
+               outline:none;transition:border-color 0.2s;box-sizing:border-box;"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none">🔍</span>
+      <button id="dict-clear" onclick="document.getElementById('dict-search').value='';this.style.display='none';onDictSearch()"
+        style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:4px">✕</button>
+    </div>
+    <button id="dict-gen-btn" onclick="dictGenerate()" style="display:none;padding:10px 14px;background:var(--accent);color:#f5ecd8;border:none;border-radius:10px;font-weight:600;font-size:0.82rem;cursor:pointer;white-space:nowrap;font-family:'IBM Plex Sans',sans-serif;">
+      ✨ Создать
+    </button>
+    <button id="dict-manual-btn" onclick="showManualWordModal()" class="btn btn-secondary" style="display:none;padding:10px 12px;font-size:0.78rem;white-space:nowrap">+ Вручную</button>
+    <button id="dict-xlsx-btn" onclick="showXlsxImportModal()" class="btn btn-secondary" style="padding:10px 12px;font-size:0.78rem;white-space:nowrap">📥 XLSX</button>
+    <button id="dict-clear-words-btn" onclick="confirmClearNouns()" class="btn btn-danger" style="display:none;padding:10px 12px;font-size:0.78rem;white-space:nowrap">🧹 Очистить</button>
+  </div>
+
+  <!-- Verb filters (shown only for verbs) -->
+  <div id="dict-verb-filters" style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+    <select class="select-control" id="dict-group" onchange="renderDict()">
+      <option value="all">Все группы</option>
+      <option value="er">-ER</option>
+      <option value="ir">-IR</option>
+      <option value="re">-RE</option>
+      <option value="irr">Неправильные</option>
+      <option value="ref">Возвратные</option>
+    </select>
+    <select class="select-control" id="dict-sort" onchange="renderDict()">
+      <option value="alpha">А→Я</option>
+      <option value="group">По группе</option>
+    </select>
+    <select class="select-control" id="dict-tense" onchange="renderDict()">
+      <option value="all">Все времена</option>
+      <option value="present">Présent</option>
+      <option value="passe">Passé composé</option>
+      <option value="imparfait">Imparfait</option>
+      <option value="futur">Futur</option>
+      <option value="plus_que_parfait">Plus-que-parfait</option>
+      <option value="conditionnel">Conditionnel</option>
+      <option value="subjonctif">Subjonctif</option>
+      <option value="imperatif">Impératif</option>
+      <option value="passe_simple">Passé simple</option>
+    </select>
+    <button class="btn btn-primary" onclick="showAddVerbModal()" style="white-space:nowrap;padding:7px 12px;font-size:0.8rem">+ Добавить</button>
+  </div>
+
+  <div id="dict-count" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;"></div>
+
+  <!-- Verb list (existing) -->
+  <div id="dict-list-wrap">
+    <div id="dict-list" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;max-height:65vh;overflow-y:auto;"></div>
+  </div>
+
+  <!-- Verb detail panel -->
+  <div id="dict-detail-wrap" style="display:none;margin-top:16px;">
+    <button onclick="closeDictDetail()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85rem;margin-bottom:16px;padding:0;font-family:'IBM Plex Sans',sans-serif">← Назад</button>
+    <div id="dict-detail" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;min-height:300px;">
+      <div style="color:var(--text-muted);font-size:0.9rem;text-align:center;padding:40px 0;">← Выбери слово из списка</div>
+    </div>
+  </div>
+
+  <!-- Nouns/Preps list & card -->
+  <div id="dict-word-wrap" style="display:none;">
+    <!-- Word card rendered by JS -->
+    <div id="dict-word-card"></div>
+  </div>
+
+</div>
+
+<!-- VERB PICKER MODAL -->
+<div id="verb-picker-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:500;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;">
+
+    <!-- Header -->
+    <div style="padding:20px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:400">Выбрать глаголы</div>
+        <button onclick="closeVerbPicker()" style="background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:4px 8px">✕</button>
+      </div>
+      <!-- Search -->
+      <div style="position:relative;">
+        <input id="vp-search" type="text" placeholder="Поиск..." oninput="renderVerbPicker()"
+          style="width:100%;padding:9px 12px 9px 36px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.85rem;outline:none;box-sizing:border-box"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;font-size:0.85rem">🔍</span>
+      </div>
+      <!-- Group filter -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+        <button class="vp-filter active" onclick="setVpFilter('all')">Все</button>
+        <button class="vp-filter" onclick="setVpFilter('er')">-ER</button>
+        <button class="vp-filter" onclick="setVpFilter('ir')">-IR</button>
+        <button class="vp-filter" onclick="setVpFilter('re')">-RE</button>
+        <button class="vp-filter" onclick="setVpFilter('irr')">Неправ.</button>
+        <button class="vp-filter" onclick="setVpFilter('ref')">Возврат.</button>
+      </div>
+    </div>
+
+    <!-- List -->
+    <div id="vp-list" style="overflow-y:auto;flex:1;padding:8px 12px;"></div>
+
+    <!-- Footer -->
+    <div style="padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;">
+        <button onclick="vpSelectAll()" class="btn btn-secondary" style="padding:7px 12px;font-size:0.75rem">Все</button>
+        <button onclick="vpClearAll()" class="btn btn-secondary" style="padding:7px 12px;font-size:0.75rem">Снять</button>
+      </div>
+      <div id="vp-count" style="font-size:0.8rem;color:var(--text-muted);flex:1;text-align:center">0 выбрано</div>
+      <button onclick="applyVerbSelection()" class="btn btn-primary" style="padding:9px 20px">Тренировать →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD VERB MODAL -->
+<!-- GROUPS SCREEN -->
+<div id="screen-groups" class="screen">
+  <div id="groups-home">
+    <div class="section-title" style="margin-bottom:6px">Группы неправильных глаголов</div>
+    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:28px">Выбери группу — увидишь паттерн спряжения и потренируешь только эти глаголы</p>
+    <div id="groups-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;"></div>
+  </div>
+
+  <!-- Group trainer -->
+  <div id="group-trainer" style="display:none">
+    <button onclick="backToGroups()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85rem;margin-bottom:20px;padding:0;font-family:'IBM Plex Sans',sans-serif">← Все группы</button>
+
+    <!-- Pattern card -->
+    <div id="group-pattern-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px;"></div>
+
+    <!-- Mini trainer inside groups -->
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" id="gtrainer-progress" style="width:0%"></div></div>
+    <div class="score-display" style="margin-bottom:16px">
+      <div class="score-item"><div class="num score-good" id="gscore-good">0</div><div class="lbl">верно</div></div>
+      <div class="score-item"><div class="num score-bad" id="gscore-bad">0</div><div class="lbl">ошибок</div></div>
+      <div class="score-item"><div class="num score-streak" id="gscore-streak">0</div><div class="lbl">серия</div></div>
+    </div>
+
+    <div class="trainer-card" id="gtrainer-card">
+      <div class="group-badge badge-irr" id="gcard-badge">—</div>
+      <div style="display:flex;align-items:center;gap:12px;justify-content:center;">
+        <div class="verb-display" id="gcard-verb">—</div>
+        <button onclick="speak(gCurrentVerb?.inf)" style="background:none;border:1px solid var(--border);border-radius:50%;width:34px;height:34px;cursor:pointer;color:var(--text-muted);font-size:0.9rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0">🔊</button>
+      </div>
+      <div class="verb-meaning" id="gcard-meaning">—</div>
+      <div class="pronoun-display" id="gcard-pronoun">—</div>
+      <div class="context-example" id="gcard-context"></div>
+    </div>
+
+    <div class="answer-area">
+      <input type="text" class="answer-input" id="ganswer-input" inputmode="none" placeholder="введи форму глагола..." autocomplete="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter')gCheckAnswer()">
+      <button class="btn btn-primary" onclick="gCheckAnswer()">Проверить</button>
+    </div>
+    <div style="text-align:right;margin-top:6px"><button class="kb-toggle-btn" id="kb-toggle-grp" onclick="toggleKbMode('grp')">⌨ Своя клавиатура</button></div>
+    <div class="feedback-row" id="gfeedback-row">
+      <button class="hint-btn" onclick="gShowHint()">💡 Подсказка (−1)</button>
+    </div>
+  <div class="fr-keyboard" id="fr-kb-grp"></div>
+  <div class="fr-keyboard-spacer" id="fr-kb-grp-spacer"></div>
+  </div>
+</div>
+
+<!-- STUDY SCREEN -->
+<div id="screen-study" class="screen">
+
+  <!-- Step 1: Choose verb to learn -->
+  <div id="study-pick" style="">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="font-family:'Playfair Display',serif;font-size:1.5rem;margin-bottom:4px">🎧 Изучить</h2>
+        <div style="font-size:0.78rem;color:var(--text-muted)">Познакомься с новым глаголом, потом закрепи в тренажёре</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="study-ll-btn" onclick="startLearnLater()" class="btn btn-secondary" style="padding:7px 14px;font-size:0.8rem;white-space:nowrap;position:relative;border-color:#ff9f0a;color:#ff9f0a">📌 Мой план <span id="study-ll-count" style="display:none;background:#ff9f0a;color:#0e0e10;border-radius:8px;font-size:0.65rem;padding:1px 5px;margin-left:4px;font-weight:700"></span></button>
+        <button id="add-verb-btn" onclick="showAddVerbModal()" class="btn btn-secondary" style="padding:7px 14px;font-size:0.8rem;white-space:nowrap">➕ Добавить глагол</button>
+      </div>
+    </div><!-- end header flex -->
+
+
+    <!-- Filters -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="select-control" id="study-group-filter" onchange="renderStudyScreen()" style="flex:1;min-width:120px;">
+        <option value="all">Все группы</option>
+        <option value="er">-ER</option>
+        <option value="ir">-IR</option>
+        <option value="re">-RE</option>
+        <option value="irr">Неправильные</option>
+        <option value="ref">Возвратные</option>
+      </select>
+      <input type="text" id="study-search" placeholder="🔍 Поиск..." oninput="renderStudyScreen()"
+        style="flex:2;min-width:140px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;outline:none"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    </div>
+
+    <!-- Stats row -->
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;flex:1;min-width:100px;text-align:center;">
+        <div style="font-size:1.4rem;font-weight:600;color:var(--accent)" id="study-new-count">—</div>
+        <div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">новых</div>
+      </div>
+      <div onclick="toggleKnownList()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;flex:1;min-width:100px;text-align:center;cursor:pointer;">
+        <div style="font-size:1.4rem;font-weight:600;color:var(--good)" id="study-known-count">—</div>
+        <div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">изучено 👁</div>
+      </div>
+    </div>
+
+    <!-- Selected list bar -->
+    <div id="study-selected-bar" style="display:none;background:var(--surface2);border:1px solid var(--accent);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:none;align-items:center;justify-content:space-between;gap:10px;">
+      <div style="font-size:0.85rem;color:var(--accent)" id="study-selected-label">Выбрано: 0</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="startSelectedSession()" style="padding:7px 14px;font-size:0.8rem">▶ Изучить выбранные</button>
+        <button onclick="clearStudySelection()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text-muted);cursor:pointer;font-size:0.8rem">✕</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+      <button class="btn btn-primary" onclick="startLearnSession()" style="flex:1;padding:11px;font-size:0.9rem">▶ Изучить следующий</button>
+      <button onclick="toggleSelectMode()" id="select-mode-btn" class="btn btn-secondary" style="padding:11px 14px;font-size:0.8rem;white-space:nowrap">☑ Выбрать</button>
+    </div>
+
+    <!-- Phrase count selector -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="font-size:0.75rem;color:var(--text-muted)">Фраз на глагол:</div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="setPhraseCount(1)" id="pc-btn-1" class="btn btn-secondary" style="padding:4px 12px;font-size:0.82rem">1</button>
+        <button onclick="setPhraseCount(3)" id="pc-btn-3" class="btn btn-secondary" style="padding:4px 12px;font-size:0.82rem">3</button>
+        <button onclick="setPhraseCount(5)" id="pc-btn-5" class="btn btn-secondary" style="padding:4px 12px;font-size:0.82rem">5</button>
+      </div>
+    </div>
+
+    <!-- New verbs list -->
+    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px">Не изучены</div>
+    <div id="study-new-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:24px;"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;cursor:pointer;" onclick="toggleKnownList()">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">Изучены</div>
+      <span id="known-toggle-icon" style="font-size:0.8rem;color:var(--text-muted)">▼</span>
+    </div>
+    <div id="study-known-list" style="display:none;flex-direction:column;gap:6px;"></div>
+  </div>
+
+  <!-- Step 2: Learn card -->
+  <div id="study-card-view" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="exitLearnSession()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0">← Назад</button>
+      <div style="font-size:0.78rem;color:var(--text-muted)" id="study-step-label">Шаг 1 из 2</div>
+    </div>
+
+    <!-- Tense is fixed per learning session (chosen from the verb's chips) -->
+
+
+    <!-- Verb card -->
+    <div class="trainer-card" style="margin-bottom:16px;">
+      <div class="group-badge" id="learn-badge">—</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.6rem;color:var(--text);margin:12px 0 6px;line-height:1" id="learn-inf">—</div>
+      <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px" id="learn-meaning">—</div>
+      <button onclick="speak(document.getElementById('learn-inf').textContent)" style="background:none;border:1px solid var(--border);border-radius:50%;width:36px;height:36px;cursor:pointer;color:var(--text-muted);font-size:1rem;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">🔊</button>
+
+      <!-- Tense label -->
+      <div id="learn-tense-label" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);text-align:center;margin-bottom:10px"></div>
+
+      <!-- Conjugation table -->
+      <div id="learn-conj-table" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;"></div>
+
+      <!-- Passé composé aux info -->
+      <div id="learn-aux-info" style="display:none;font-size:0.78rem;color:var(--text-muted);text-align:center;padding:8px;background:var(--surface2);border-radius:8px;margin-bottom:8px"></div>
+
+      <!-- Example -->
+      <div style="font-size:0.8rem;color:var(--text-dim);font-style:italic;padding-top:12px;border-top:1px solid var(--border)" id="learn-example"></div>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <button class="btn btn-secondary" onclick="learnAgain()" style="padding:12px">🔄 Показать снова</button>
+      <button class="btn btn-primary" onclick="startLearnCheck()" style="padding:12px">✏️ Закрепить →</button>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:8px;">
+      <button onclick="startPhrasesStep()" style="flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text-muted);cursor:pointer;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;">
+        💬 Понял паттерн, сразу к фразам →
+      </button>
+      <button id="study-gen-btn" onclick="showAddPhraseModalForVerb(learnVerb?.id)" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--accent);cursor:pointer;font-size:0.82rem;font-family:'IBM Plex Sans',sans-serif;white-space:nowrap;">
+        + Фраза
+      </button>
+    </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Quick check -->
+  <div id="study-check-view" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="backToLearnCard()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0">← Назад</button>
+      <div style="font-size:0.78rem;color:var(--text-muted)">Быстрая проверка</div>
+    </div>
+
+    <div class="trainer-card" style="margin-bottom:16px;">
+      <div class="group-badge" id="check-badge">—</div>
+      <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:2.2rem;color:var(--text);margin:12px 0 6px" id="check-inf">—</div>
+      <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px" id="check-meaning">—</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:1.2rem;color:var(--accent)" id="check-pronoun">—</div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <input type="text" id="check-input" placeholder="введи форму..." autocomplete="off" autocorrect="off" autocapitalize="off" inputmode="none" spellcheck="false"
+        style="flex:1;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:1rem;outline:none"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')checkLearnAnswer()">
+      <button class="btn btn-primary" onclick="checkLearnAnswer()" style="padding:11px 16px">Проверить</button>
+    </div>
+    <div id="check-feedback" style="min-height:40px;"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+      <div id="learn-kb-indicator" style="font-size:0.72rem;color:var(--text-dim);display:none">⌨ французская клавиатура активна</div>
+      <button class="kb-toggle-btn" id="kb-toggle-learn" onclick="toggleKbMode('learn')" style="margin-left:auto">⌨ Своя клавиатура</button>
+    </div>
+    <div class="fr-keyboard" id="fr-kb-learn"></div>
+  </div>
+
+  <!-- Step 3: Phrases -->
+  <div id="study-phrases-view" style="display:none;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button onclick="backToLearnCard()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0">← Назад</button>
+      <div style="font-size:0.78rem;color:var(--text-muted)" id="phrases-step-label">Фраза 1 из 3</div>
+    </div>
+
+    <div class="trainer-card" style="margin-bottom:16px;">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:12px">📝 Фраза в контексте</div>
+      <div style="font-size:1.1rem;color:var(--text);line-height:1.6;margin-bottom:8px;font-family:'Playfair Display',serif;font-style:italic" id="phrase-fr">—</div>
+      <div style="font-size:0.82rem;color:var(--text-muted)" id="phrase-ru">—</div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <input type="text" id="phrase-input" placeholder="введи пропущенную форму..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        style="flex:1;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:1rem;outline:none"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')checkPhraseAnswer()">
+      <button class="btn btn-primary" onclick="checkPhraseAnswer()" style="padding:11px 16px">Проверить</button>
+    </div>
+    <div id="phrase-feedback" style="min-height:40px;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+      <div id="phrase-kb-indicator" style="font-size:0.72rem;color:var(--text-dim);display:none">⌨ французская клавиатура активна</div>
+      <button class="kb-toggle-btn" id="kb-toggle-phrase-learn" onclick="toggleKbMode('phrase-learn')" style="margin-left:auto">⌨ Своя клавиатура</button>
+    </div>
+    <div class="fr-keyboard" id="fr-kb-phrase-learn"></div>
+  </div>
+
+  <!-- Step 4: Result -->
+  <div id="study-result-view" style="display:none;text-align:center;padding:24px 0;">
+    <div style="font-size:3rem;margin-bottom:12px" id="result-emoji">✅</div>
+    <div style="font-family:'Playfair Display',serif;font-size:1.4rem;margin-bottom:8px" id="result-title">Отлично!</div>
+    <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px" id="result-text">Глагол добавлен в расписание</div>
+    <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:24px" id="result-session-info"></div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:320px;margin:0 auto;">
+      <button class="btn btn-primary" id="result-next-btn" onclick="startLearnSession()" style="padding:12px">▶ Изучить следующий</button>
+      <button class="btn btn-secondary" onclick="goToTrainerFromStudy()" style="padding:12px">✏️ Закрепить в тренажёре →</button>
+      <button class="btn btn-secondary" onclick="exitLearnSession()" style="padding:12px">← К списку</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- PHRASES SCREEN -->
+<div id="screen-phrases" class="screen">
+
+  <div id="ph-setup-area">
+  <!-- Mode switcher -->
+  <div style="display:flex;gap:6px;margin-bottom:14px;background:var(--surface2);border-radius:10px;padding:4px;">
+    <button id="ph-mode-fill-btn" onclick="setPhrasesMode('fill')"
+      style="flex:1;padding:7px 6px;border:none;border-radius:7px;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all 0.2s;background:var(--accent);color:#f5ecd8;font-weight:600">
+      ✏️ Заполнить пропуск
+    </button>
+    <button id="ph-mode-construct-btn" onclick="setPhrasesMode('construct')"
+      style="flex:1;padding:7px 6px;border:none;border-radius:7px;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      🧩 Конструктор
+    </button>
+    <button id="ph-mode-translate-btn" onclick="setPhrasesMode('translate')"
+      style="display:none;flex:1;padding:7px 6px;border:none;border-radius:7px;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      🌐 Перевести
+    </button>
+    <button id="ph-mode-question-btn" onclick="setPhrasesMode('question')"
+      style="display:none;flex:1;padding:7px 6px;border:none;border-radius:7px;font-size:0.78rem;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:all 0.2s;background:none;color:var(--text-muted)">
+      ❓ Вопрос
+    </button>
+  </div>
+
+  <!-- Difficulty (shown in AI modes) -->
+  <div id="ph-difficulty-row" style="display:none;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+    <button onclick="setPhDifficulty('easy')" id="ph-diff-easy"
+      style="padding:5px 14px;border:2px solid var(--border);border-radius:20px;background:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s">
+      🟢 Débutant
+    </button>
+    <button onclick="setPhDifficulty('medium')" id="ph-diff-medium"
+      style="padding:5px 14px;border:2px solid var(--accent);border-radius:20px;background:rgba(212,175,55,0.1);color:var(--accent);font-size:0.78rem;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s">
+      🟡 Intermédiaire
+    </button>
+    <button onclick="setPhDifficulty('hard')" id="ph-diff-hard"
+      style="padding:5px 14px;border:2px solid var(--border);border-radius:20px;background:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s">
+      🔴 Avancé
+    </button>
+  </div>
+
+  <!-- Filters -->
+  <div id="ph-filters-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+    <select class="select-control" id="ph-group" onchange="renderPhrasesScreen()">
+      <option value="all">Все группы</option>
+      <option value="er">-ER глаголы</option>
+      <option value="ir">-IR глаголы</option>
+      <option value="re">-RE глаголы</option>
+      <option value="irr">Неправильные</option>
+      <option value="ref">Возвратные</option>
+    </select>
+    <select class="select-control" id="ph-tense" onchange="renderPhrasesScreen()">
+      <option value="all">Все времена</option>
+      <option value="present">Présent</option>
+      <option value="passe">Passé composé</option>
+      <option value="imparfait">Imparfait</option>
+      <option value="futur">Futur simple</option>
+    </select>
+    <button id="ph-generate-btn" onclick="showAddPhraseModal()" class="btn btn-secondary" style="padding:6px 12px;font-size:0.78rem;white-space:nowrap">+ Фраза</button>
+    <div id="ph-count" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto"></div>
+  </div><!-- end ph-filters-row -->
+
+  <!-- Generate modal -->
+  <div id="generate-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:380px;">
+      <div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:16px">✨ Генерировать фразы</div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Глагол</label>
+        <input id="gen-verb-search" placeholder="Поиск глагола..." oninput="filterGenVerbs()"
+          style="width:100%;box-sizing:border-box;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;outline:none;margin-bottom:6px"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <select id="gen-verb" class="select-control" style="width:100%;max-height:160px" size="6"></select>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Время</label>
+        <select id="gen-tense" class="select-control" style="width:100%">
+          <option value="present">Présent</option>
+          <option value="passe">Passé composé</option>
+          <option value="imparfait">Imparfait</option>
+          <option value="futur">Futur simple</option>
+        </select>
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Количество фраз</label>
+        <select id="gen-count" class="select-control" style="width:100%">
+          <option value="20">20</option>
+          <option value="30">30</option>
+          <option value="50" selected>50</option>
+        </select>
+      </div>
+      <div id="gen-status" style="display:none;font-size:0.82rem;color:var(--accent);margin-bottom:12px;text-align:center"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeGenerateModal()" class="btn btn-secondary" style="flex:1">Отмена</button>
+        <button onclick="generatePhrases()" id="gen-btn" class="btn btn-primary" style="flex:1">Генерировать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search and verb selection -->
+  <div style="display:flex;gap:8px;margin-bottom:10px;">
+    <input type="text" id="ph-search" placeholder="🔍 Поиск глагола..." oninput="renderPhrasesVerbList()"
+      style="flex:1;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.88rem;outline:none"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    <button onclick="togglePhVerbSelect()" id="ph-select-btn" class="btn btn-secondary" style="padding:8px 12px;font-size:0.8rem;white-space:nowrap">☑ Выбрать</button>
+  </div>
+
+  <!-- Selected verbs bar -->
+  <div id="ph-selected-bar" style="display:none;background:var(--surface2);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;margin-bottom:10px;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="font-size:0.82rem;color:var(--accent)" id="ph-selected-label">Выбрано: 0</div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-primary" onclick="startPhrasesWithSelected()" style="padding:6px 12px;font-size:0.78rem">▶ Тренировать</button>
+      <button onclick="clearPhVerbSelection()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text-muted);cursor:pointer;font-size:0.78rem">✕</button>
+    </div>
+  </div>
+
+  <!-- Verb list (shown when searching or selecting) -->
+  <div id="ph-verb-list" style="display:none;max-height:180px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;"></div>
+  </div><!-- end ph-setup-area -->
+
+  <!-- Toggle to reopen settings (shown only during practice) -->
+  <div id="ph-setup-toggle" style="display:none;margin-bottom:12px;">
+    <button onclick="togglePhSetup()" class="btn btn-secondary" style="padding:6px 14px;font-size:0.78rem;width:100%">⚙ Настройки и выбор глаголов</button>
+  </div>
+
+  <!-- Score -->
+  <div class="score-display" style="margin-bottom:20px;">
+    <div class="score-item"><div class="num score-good" id="phscore-good">0</div><div class="lbl">верно</div></div>
+    <div class="score-item"><div class="num score-bad" id="phscore-bad">0</div><div class="lbl">ошибок</div></div>
+    <div class="score-item"><div class="num score-streak" id="phscore-streak">0</div><div class="lbl">серия</div></div>
+  </div>
+
+  <!-- Phrase card -->
+  <div class="trainer-card" id="ph-card" style="min-height:200px;">
+    <div class="group-badge badge-er" id="ph-badge">—</div>
+    <div style="font-family:'Playfair Display',serif;font-size:1.5rem;line-height:1.6;text-align:center;margin:16px 0;color:var(--text)" id="ph-sentence">—</div>
+    <div style="font-size:0.78rem;color:var(--text-dim);font-style:italic" id="ph-ru" onclick="this.style.opacity=this.style.opacity==='0'?'1':'0'" style="opacity:0;cursor:pointer">—</div>
+    <div style="font-size:0.72rem;color:var(--text-dim);margin-top:6px">нажми на перевод, чтобы показать</div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px">
+      <button id="ph-speak-current-btn" onclick="speakCurrentPhrase()" class="btn btn-secondary" style="padding:6px 12px;font-size:0.78rem">🔊 Озвучить</button>
+      <button id="ph-edit-current-btn" onclick="editCurrentPhrase()" class="btn btn-secondary" style="display:none;padding:6px 12px;font-size:0.78rem">✏️ Редактировать</button>
+      <button id="ph-delete-current-btn" onclick="deleteCurrentPhrase()" class="btn btn-secondary" style="display:none;padding:6px 12px;font-size:0.78rem;color:var(--bad);border-color:rgba(255,59,48,.35)">🗑 Удалить</button>
+    </div>
+  </div>
+
+  <!-- Answer area (fill mode) -->
+  <div id="ph-answer-fill" style="margin-top:16px;">
+    <div class="answer-area">
+      <textarea class="answer-input" id="ph-input" rows="1"
+        placeholder="введи пропущенную форму..."
+        autocomplete="off" autocorrect="off" spellcheck="false"
+        oninput="autoResizePhraseInput()"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();checkPhrase();}"
+        style="min-height:54px;line-height:1.45;resize:vertical;padding-top:14px;padding-bottom:14px;"></textarea>
+      <button class="btn btn-primary" onclick="checkPhrase()">Проверить</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+      <button onclick="phraseHint()" style="background:none;border:1px solid var(--border);border-radius:16px;padding:4px 12px;font-size:0.72rem;color:var(--text-muted);cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s">💡 Подсказка</button>
+      <button class="kb-toggle-btn" id="kb-toggle-ph" onclick="toggleKbMode('ph')">⌨ Своя клавиатура</button>
+    </div>
+  </div>
+
+  <!-- Answer area (AI modes: translate + question) -->
+  <div id="ph-answer-ai" style="display:none;margin-top:16px;">
+    <textarea id="ph-ai-input" rows="3"
+      placeholder="Введи ответ по-французски..."
+      autocomplete="off" autocorrect="off" spellcheck="false"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();checkPhraseAI();}"
+      style="width:100%;box-sizing:border-box;padding:12px 16px;background:var(--surface2);border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:'Playfair Display',serif;font-size:1.05rem;outline:none;resize:none;line-height:1.5;transition:border-color 0.2s"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+
+    <!-- Hint bar -->
+    <div id="ph-ai-hint-bar" style="display:none;margin-top:8px;padding:10px 14px;background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.25);border-radius:10px;">
+      <div style="font-size:0.68rem;color:var(--accent);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px">💡 Подсказка</div>
+      <div id="ph-ai-hint-text" style="font-family:'Playfair Display',serif;font-style:italic;font-size:1rem;color:var(--text);letter-spacing:0.04em;line-height:1.6"></div>
+      <div id="ph-ai-hint-penalty" style="font-size:0.68rem;color:var(--text-dim);margin-top:3px"></div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="checkPhraseAI()" id="ph-ai-check-btn" style="flex:1">
+        ✨ Проверить
+      </button>
+      <button onclick="phAIHint()" id="ph-ai-hint-btn"
+        style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--text-muted);font-size:0.8rem;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all 0.2s;white-space:nowrap"
+        onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
+        💡 Подсказка
+      </button>
+      <button onclick="nextPhrase()" class="btn btn-secondary" style="padding:8px 12px;font-size:0.82rem">
+        Пропустить →
+      </button>
+    </div>
+    <div style="text-align:right;margin-top:6px;">
+      <button class="kb-toggle-btn" id="kb-toggle-ph-ai" onclick="toggleKbMode('ph')">⌨ Своя клавиатура</button>
+    </div>
+  </div>
+
+  <!-- AI feedback -->
+  <div id="ph-ai-feedback" style="display:none;margin-top:14px;border-radius:12px;padding:16px;background:var(--surface2);border:1px solid var(--border);">
+    <div id="ph-ai-result" style="font-size:0.92rem;line-height:1.6;color:var(--text)"></div>
+    <button onclick="nextPhrase()" class="btn btn-primary" style="margin-top:12px;width:100%">
+      Следующая →
+    </button>
+  </div>
+  <div id="ph-feedback" style="min-height:52px;display:flex;gap:12px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>
+  <div class="fr-keyboard" id="fr-kb-ph"></div>
+  <div class="fr-keyboard-spacer" id="fr-kb-ph-spacer"></div>
+</div>
+
+<!-- NUMBERS SCREEN -->
+
+</main>
+
+  <!-- Add verb modal -->
+  <div id="learn-later-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:1rem;font-weight:600;color:var(--text)">📌 Мой план</div>
+        <button onclick="closeLearnLaterModal()" style="background:none;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:14px">Отложенные глаголы. Можно пройти все сразу или удалить лишние.</div>
+      <div id="learn-later-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button id="learn-later-start-btn" onclick="startLearnLaterFromModal()" class="btn btn-primary" style="flex:1;padding:12px;font-size:0.9rem">▶ Изучить все</button>
+        <button onclick="clearLearnLaterPlan()" class="btn btn-secondary" style="padding:12px;font-size:0.85rem;color:var(--bad);border-color:rgba(255,59,48,.35)">Очистить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="add-verb-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;">
+      <div id="add-verb-title" style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:4px">➕ Добавить глагол вручную</div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px">Из читалки DeepSeek может заполнить формы автоматически. Всё равно проверь глазами перед сохранением.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Инфинитив</label>
+          <input id="add-verb-input" placeholder="avoir" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+        <div>
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Перевод</label>
+          <input id="add-verb-meaning" placeholder="иметь" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Группа</label>
+          <select id="add-verb-group" class="select-control" style="width:100%">
+            <option value="er">-er</option>
+            <option value="ir">-ir</option>
+            <option value="re">-re</option>
+            <option value="irr" selected>irr</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Aux</label>
+          <select id="add-verb-aux" class="select-control" style="width:100%">
+            <option value="avoir" selected>avoir</option>
+            <option value="être">être</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Participe passé</label>
+          <input id="add-verb-pp" placeholder="eu"
+            style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Présent — 6 форм через запятую или с новой строки</label>
+        <textarea id="add-verb-present" rows="2" placeholder="ai, as, a, avons, avez, ont"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      </div>
+      <details style="margin-bottom:14px;">
+        <summary style="cursor:pointer;color:var(--text-muted);font-size:0.8rem;margin-bottom:8px">Дополнительно: времена и примеры</summary>
+        <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px;">
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Imparfait — можно оставить пустым</label>
+            <textarea id="add-verb-imparfait" rows="2" placeholder="avais, avais, avait, avions, aviez, avaient"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Futur — можно оставить пустым</label>
+            <textarea id="add-verb-futur" rows="2" placeholder="aurai, auras, aura, aurons, aurez, auront"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Plus-que-parfait — заготовка</label>
+            <textarea id="add-verb-plus_que_parfait" rows="2" placeholder="avais eu, avais eu, avait eu, avions eu, aviez eu, avaient eu"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Conditionnel — заготовка</label>
+            <textarea id="add-verb-conditionnel" rows="2" placeholder="aurais, aurais, aurait, aurions, auriez, auraient"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Subjonctif — заготовка</label>
+            <textarea id="add-verb-subjonctif" rows="2" placeholder="aie, aies, ait, ayons, ayez, aient"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Impératif — 3 формы</label>
+            <textarea id="add-verb-imperatif" rows="2" placeholder="aie, ayons, ayez"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Passé simple — книжное</label>
+            <textarea id="add-verb-passe_simple" rows="2" placeholder="eus, eus, eut, eûmes, eûtes, eurent"
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;outline:none;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px">Пример, необязательно</label>
+            <input id="add-verb-example" placeholder="J'ai un chat."
+              style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:0.9rem;outline:none">
+          </div>
+        </div>
+      </details>
+      <div id="add-verb-status" style="display:none;font-size:0.82rem;margin-bottom:12px;text-align:center;padding:8px;border-radius:8px;background:var(--surface2)"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeAddVerbModal()" class="btn btn-secondary" style="flex:1">Отмена</button>
+        <button onclick="addVerb()" id="add-verb-confirm" class="btn btn-primary" style="flex:1">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div><!-- /main-app -->
+<script>
+  // ── Robust handler bridge ──
+  // onclick="fn()" in HTML calls window.fn. The ES module assigns real
+  // implementations to window.* as it loads. Until then, calls are buffered
+  // and replayed once the module signals readiness. This does NOT depend on
+  // the position of any line in app.js — readiness is set explicitly and the
+  // buffer is also flushed defensively on each new assignment.
+
+  window.__ready = false;
+  window.__pending = [];
+
+  // List of every function name invoked from HTML (onclick, etc.)
+  window.__handlers = [
+    'doLogin','doRegister','switchAuthTab','logoutProfile','showScreen','continueAsGuest','guardGuest','checkServerHealth',
+    'resetTrainer','checkAnswer','showHint','markAsKnown','recallResult','revealRecall','skipPattern',
+    'startSRSReview','startLearnSession','startLearnCheck',
+    'startPhrasesStep','startPhrasesWithSelected','startSelectedSession',
+    'renderHome','renderStats','renderDict','renderLeaderboard','renderReaderScreen','showReaderImportModal','closeReaderImportModal','readerImportFromFile','saveReaderImport','readerOpenBook','readerBackToLibrary','readerNextChapter','readerPrevChapter','readerSpeakParagraph','readerSpeakCurrentParagraph','readerSpeakChapter','readerCopyParagraph','readerCopyCurrentParagraph','readerDeleteBook','readerSetComprehension','readerSendParagraphToPhrase','readerPrevParagraph','readerNextParagraph','readerStopSpeech','readerOpenWordPanel','readerCloseWordPanel','readerSaveWord','readerTranslateWordAI','readerTranslateParagraphAI','readerAnalyzeParagraphAI','toggleReaderTranslations','readerAction','readerMarkSelectedWordKnown',
+    'nextPhrase','checkPhrase','phraseHint','autoResizePhraseInput','checkPhraseAnswer','checkLearnAnswer',
+    'nextNumber','checkNumber','speakCurrentNumber','speak','speakText',
+    'gCheckAnswer','gShowHint','gNextCard',
+    'openVerbPicker','closeVerbPicker','applyVerbSelection','clearVerbSelection',
+    'showAddVerbModal','closeAddVerbModal','addVerb','editVerb','backToGroups','backToLearnCard',
+    'showGenerateModal','showGenerateModalForVerb','closeGenerateModal','generatePhrases',
+    'showAddPhraseModal','showAddPhraseModalForVerb','closeAddPhraseModal','saveManualPhrase','populateAddPhraseVerbList',
+    'editCurrentPhrase','deleteCurrentPhrase','speakCurrentPhrase','showManualWordModal','closeManualWordModal','saveManualWord','editDictWord','showXlsxImportModal','closeXlsxImportModal','runXlsxImport',
+    'populateGenVerbList','renderPhrasesScreen','closeDictDetail',
+    'confirmReset','exitReviewMode','exitLearnSession','startTrainerReview',
+    'goToTrainerFromStudy','learnAgain','setGrammar',
+    'setLearnTense','setNounTrainMode','setDictType','setPhrasesMode','setPhDifficulty',
+    'setTrainerMode','nounNextCard','checkNoun','toggleNounWeak','prepNextCard','checkPrep',
+    'dictGenerate','onDictSearch','showDictWordCard','deleteDictWord','startNounTrainFromDict',
+    'toggleMoreMenu','closeMoreMenu','openRatePhrases','rpStart','rpStop',
+    'checkNounPlural','selectMatch','nextMatchRound','phAIHint','checkPhraseAI','loadAIPhrase',
+    'toggleAutoSpeak','toggleKbMode','toggleKnownList','toggleRule','toggleSelectMode',
+    'togglePhVerbSelect','clearPhVerbSelection','clearStudySelection',
+    'vpClearAll','vpSelectAll','nextPluralNoun',
+    'setNumRange','setPhraseCount','setTTSEngine','setVpFilter','showProfileManage',
+    'renderDictWords','renderDict','deleteCustomVerb',
+    'toggleLearnLater','startLearnLater','closeLearnLaterModal','removeFromLearnLater','startLearnLaterFromModal','clearLearnLaterPlan',
+  ];
+
+  // Install a buffering stub for each name. The stub captures the call;
+  // if the real fn is already present (module loaded), it calls through.
+  window.__handlers.forEach(function(name) {
+    if (typeof window[name] === 'function' && window['__real_' + name]) return;
+    var stub = function() {
+      var real = window['__real_' + name];
+      if (real) return real.apply(null, arguments);
+      window.__pending.push({ name: name, args: Array.prototype.slice.call(arguments) });
+    };
+    stub.__isStub = true;
+    window[name] = stub;
+  });
+
+  // Called by app.js (and safe to call multiple times) once handlers are live.
+  window._moduleResolve = function() {
+    window.__ready = true;
+    var q = window.__pending.splice(0);
+    q.forEach(function(c) {
+      var real = window['__real_' + c.name] || window[c.name];
+      if (typeof real === 'function') {
+        try { real.apply(null, c.args); } catch(e) { console.error('replay', c.name, e); }
+      }
+    });
+  };
+</script>
+  <script>
+    // More menu — синхронные функции, НЕ через прокси (нужны сразу при клике)
+    function toggleMoreMenu() {
+      var menu = document.getElementById('more-menu');
+      var overlay = document.getElementById('more-overlay');
+      if (!menu) return;
+      var isOpen = menu.style.display !== 'none';
+      menu.style.display = isOpen ? 'none' : 'block';
+      if (overlay) overlay.style.display = isOpen ? 'none' : 'block';
+    }
+    function closeMoreMenu() {
+      var menu = document.getElementById('more-menu');
+      var overlay = document.getElementById('more-overlay');
+      if (menu) menu.style.display = 'none';
+      if (overlay) overlay.style.display = 'none';
+    }
+    function showProfileManage() {
+      closeMoreMenu();
+      var main = document.getElementById('main-app');
+      var prof = document.getElementById('screen-profile');
+      if (main) main.style.display = 'none';
+      if (prof) { prof.style.display = 'flex'; }
+      if (window.switchAuthTab) window.switchAuthTab('login');
+    }
+    function handleKey(event) {
+      if (event.key === 'Enter' && window.checkAnswer) window.checkAnswer();
+    }
+    function setGrammar(tense) {
+      document.querySelectorAll('.grammar-panel').forEach(function(p){ p.classList.remove('active'); });
+      document.querySelectorAll('.grammar-btn').forEach(function(b){ b.classList.remove('active'); });
+      var panel = document.getElementById('grammar-' + tense);
+      if (panel) panel.classList.add('active');
+      document.querySelectorAll('.grammar-btn').forEach(function(b){
+        if (b.getAttribute('onclick') && b.getAttribute('onclick').indexOf("'" + tense + "'") !== -1) b.classList.add('active');
+      });
+    }
+    function openGrammar(tense) {
+      if (window.showScreen) window.showScreen('grammar');
+      setGrammar(tense);
+    }
+    function setTrainerMode(mode) {
+      // Hide all mode panels
+      ['trainer-card','type-area','recall-area','feedback-row','custom-selection-banner',
+       'trainer-nouns-mode','trainer-preps-mode','trainer-numbers-mode','no-weak-state']
+        .forEach(function(id){
+          var el = document.getElementById(id);
+          if (el) el.style.display = 'none';
+        });
+
+      // Update tab buttons
+      ['verbs','nouns','preps','numbers'].forEach(function(m){
+        var btn = document.getElementById('mode-' + m + '-btn') ||
+                  document.getElementById('mode-' + (m==='numbers'?'nums':m) + '-btn');
+        if (btn) btn.classList.toggle('active', m === mode);
+      });
+
+      if (mode === 'verbs') {
+        ['trainer-card','type-area','feedback-row'].forEach(function(id){
+          var el = document.getElementById(id);
+          if (el) el.style.display = '';
+        });
+        if (window.resetTrainer) window.resetTrainer();
+      } else if (mode === 'nouns') {
+        var el = document.getElementById('trainer-nouns-mode');
+        if (el) el.style.display = 'block';
+        if (window.nounNextCard) window.nounNextCard();
+      } else if (mode === 'preps') {
+        var el = document.getElementById('trainer-preps-mode');
+        if (el) el.style.display = 'block';
+        if (window.prepNextCard) window.prepNextCard();
+      } else if (mode === 'numbers') {
+        var el = document.getElementById('trainer-numbers-mode');
+        if (el) el.style.display = 'block';
+        if (window.nextNumber) window.nextNumber();
+      }
+    }
+    function startSRSReview() {
+      if (window.showScreen) window.showScreen('trainer');
+      var banner = document.getElementById('review-banner');
+      if (banner) banner.classList.add('active');
+      if (window.resetTrainer) window.resetTrainer();
+    }
+
+    // Expose ALL sync functions to window so onclick= can find them
+    window.toggleMoreMenu    = toggleMoreMenu;
+    window.closeMoreMenu     = closeMoreMenu;
+    window.showProfileManage = showProfileManage;
+    window.handleKey         = handleKey;
+    window.setGrammar        = setGrammar;
+    window.openGrammar       = openGrammar;
+    window.setTrainerMode    = setTrainerMode;
+    window.startSRSReview    = startSRSReview;
+    // renderLeaderboard is assigned by app.js (the inline shim was dead code)
+
+    // ── Построение французской клавиатуры ──
+    window._buildFrKb = function buildFrKb(kbId) {
+      var kb = document.getElementById('fr-kb-' + kbId);
+      if (!kb || kb.dataset.built === '1') return;
+      kb.dataset.built = '1';
+
+      var rows = [
+        ['a','z','e','r','t','y','u','i','o','p'],
+        ['q','s','d','f','g','h','j','k','l','m'],
+        ['SHIFT','w','x','c','v','b','n',',','.','BACK'],
+        ['SPACE','ENTER']
+      ];
+
+      var accents = {
+        a:['à','â','ä'], e:['é','è','ê','ë'], i:['î','ï'],
+        o:['ô','ö'], u:['ù','û','ü'], c:['ç']
+      };
+
+      rows.forEach(function(row) {
+        var rowDiv = document.createElement('div');
+        rowDiv.style.cssText = 'display:flex;justify-content:center;gap:4px;margin-bottom:4px;';
+
+        row.forEach(function(key) {
+          var btn = document.createElement('button');
+
+          if (key === 'SHIFT') {
+            btn.id = 'fr-shift-' + kbId;
+            btn.className = 'fr-key fr-key-action fr-key-wide fr-key-shift';
+            btn.textContent = '⇧';
+            btn.onclick = function(){ if(window.frToggleShift) window.frToggleShift(kbId); };
+
+          } else if (key === 'BACK') {
+            btn.className = 'fr-key fr-key-action fr-key-wide';
+            btn.textContent = '⌫';
+            btn.onclick = function(){ if(window.frBackspace) window.frBackspace(kbId); };
+
+          } else if (key === 'SPACE') {
+            btn.className = 'fr-key fr-key-space';
+            btn.textContent = 'espace';
+            btn.dataset.ch = ' ';
+            btn.onclick = function(){ if(window.insertFrChar) window.insertFrChar(kbId, ' '); };
+
+          } else if (key === 'ENTER') {
+            btn.className = 'fr-key fr-key-action fr-key-wide';
+            btn.textContent = '↵';
+            btn.onclick = function(){ if(window.frEnter) window.frEnter(kbId); };
+
+          } else {
+            btn.className = 'fr-key';
+            btn.dataset.ch = key;
+            btn.textContent = key;
+
+            // Long press for accents
+            var accList = accents[key];
+            if (accList) {
+              var pressTimer = null;
+              var accIndex = 0;
+
+              btn.addEventListener('mousedown', function(){
+                pressTimer = setTimeout(function(){
+                  pressTimer = null;
+                  // cycle through accents
+                  var ch = accList[accIndex % accList.length];
+                  accIndex++;
+                  if(window.insertFrChar) window.insertFrChar(kbId, ch);
+                }, 400);
+              });
+              btn.addEventListener('mouseup', function(){
+                if (pressTimer) {
+                  clearTimeout(pressTimer);
+                  pressTimer = null;
+                  if(window.insertFrChar) window.insertFrChar(kbId, btn.dataset.ch);
+                }
+              });
+              btn.addEventListener('touchstart', function(e){
+                e.preventDefault();
+                pressTimer = setTimeout(function(){
+                  pressTimer = null;
+                  var ch = accList[accIndex % accList.length];
+                  accIndex++;
+                  if(window.insertFrChar) window.insertFrChar(kbId, ch);
+                }, 400);
+              }, {passive:false});
+              btn.addEventListener('touchend', function(e){
+                e.preventDefault();
+                if (pressTimer) {
+                  clearTimeout(pressTimer);
+                  pressTimer = null;
+                  if(window.insertFrChar) window.insertFrChar(kbId, btn.dataset.ch);
+                }
+              }, {passive:false});
+            } else {
+              btn.onclick = function(){ if(window.insertFrChar) window.insertFrChar(kbId, btn.dataset.ch); };
+            }
+          }
+
+          rowDiv.appendChild(btn);
+        });
+
+        kb.appendChild(rowDiv);
+      });
+
+      // Add kb-toggle button if not present
+      if (!document.getElementById('kb-toggle-' + kbId)) {
+        var toggleBtn = document.createElement('button');
+        toggleBtn.id = 'kb-toggle-' + kbId;
+        toggleBtn.className = 'kb-toggle-btn';
+        toggleBtn.textContent = '⌨ Своя клавиатура';
+        toggleBtn.onclick = function(){ if(window.toggleKbMode) window.toggleKbMode(kbId); };
+        kb.parentNode.insertBefore(toggleBtn, kb);
+      }
+    };
+  </script>
+<script type="module" src="js/app.js?v=28.0-dict-tools"></script>
+</body>
+</html>

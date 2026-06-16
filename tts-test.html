@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TTS Test</title></head>
+<body style="font-family:sans-serif;padding:20px;font-size:16px">
+<h3>Тест озвучки</h3>
+<button id="b" style="padding:14px 24px;font-size:18px">Проверить звук</button>
+<pre id="log" style="white-space:pre-wrap;word-break:break-all;background:#f0f0f0;padding:12px;margin-top:16px;border-radius:8px"></pre>
+<script>
+const URL_FN = 'https://dhimxbkjvowmwrosgcpb.supabase.co/functions/v1/tts';
+const KEY = 'sb_publishable_8H-4I4IDKQG_Vr-FBZ7ESQ_ZH5PSHZv';
+const log = (m) => document.getElementById('log').textContent += m + '\n';
+document.getElementById('b').onclick = async () => {
+  document.getElementById('log').textContent = '';
+  log('Отправляю запрос...');
+  try {
+    const r = await fetch(URL_FN, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+KEY,'apikey':KEY},
+      body: JSON.stringify({text:'bonjour'})
+    });
+    log('HTTP статус: ' + r.status);
+    log('X-Cache: ' + (r.headers.get('x-cache')||'нет'));
+    const ct = r.headers.get('content-type');
+    log('Content-Type: ' + ct);
+    if (ct && ct.includes('audio')) {
+      const blob = await r.blob();
+      log('Размер аудио: ' + blob.size + ' байт');
+      if (blob.size > 200) {
+        log('✓ Аудио получено! Проигрываю...');
+        const a = new Audio(URL.createObjectURL(blob));
+        await a.play();
+        log('✓ play() вызван');
+      } else {
+        log('✗ Аудио пустое');
+      }
+    } else {
+      const t = await r.text();
+      log('✗ Не аудио, ответ: ' + t);
+    }
+  } catch(e) {
+    log('✗ Ошибка: ' + e.message);
+  }
+};
+</script>
+</body>
+</html>
