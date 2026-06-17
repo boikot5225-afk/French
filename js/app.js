@@ -4,7 +4,7 @@
 
 import { todayStr, addDays, profileKey, showToast, showLoading, hideLoading, toDateStr } from './utils.js';
 import { initSupabase, isSupabaseReady, sb, sbUser, setSbUser, sbSignIn, sbSignUp, sbSignOut,
-         sbGetProfile, sbLoadStats, sbLoadSRS, sbLoadMeta, fetchWithTimeout, LONG_REQUEST_TIMEOUT_MS, SUPABASE_URL, SUPABASE_KEY, ADMIN_USERNAME, sbIsCurrentUserAdmin } from './supabase.js';
+         sbGetProfile, sbLoadStats, sbLoadSRS, sbLoadMeta, fetchWithTimeout, LONG_REQUEST_TIMEOUT_MS, SUPABASE_URL, SUPABASE_KEY, ADMIN_USERNAME, sbIsCurrentUserAdmin, sbGetCurrentUserId } from './supabase.js';
 import { setCurrentProfile } from './state.js';
 import { sm2Update, loadSRS, saveSRS, mergeSRS, flushFailedSync, sanitizeSRS, srsKey, verbHasAnyCard, SRS_TENSES } from './srs.js';
 import { loadStats, saveStats, loadMeta, saveMeta, syncStatsFromCloud,
@@ -49,9 +49,14 @@ export let PHRASES_LOADED = false;
 export let NOUNS = [];
 let currentUserIsFirebaseAdmin = false;
 
-// v24: новый ключ, чтобы не подхватывать старые Supabase-кэши
-const VERBS_CACHE_KEY = 'an2_cache_verbs_firebase_v31';
-const PHRASES_CACHE_KEY = 'an2_cache_phrases_firebase_v31';
+// v68: активный язык обучения (Фаза 1 — только французский, переключатель позже).
+if (!globalThis.AN2_LANG) {
+  try { globalThis.AN2_LANG = localStorage.getItem('an2_lang') || 'fr'; } catch { globalThis.AN2_LANG = 'fr'; }
+}
+
+// v68: кэш словарей теперь поязыковой (база личная и пустая по умолчанию).
+const VERBS_CACHE_KEY = `an2_cache_verbs_${globalThis.AN2_LANG}_v32`;
+const PHRASES_CACHE_KEY = `an2_cache_phrases_${globalThis.AN2_LANG}_v32`;
 
 function canEditSharedDictionary() {
   // UI-gate only. Real protection is in Firebase Rules: /admins/<UID> = true.
@@ -386,6 +391,24 @@ window.frToggleShift = frToggleShift;
 window.logoutProfile = logoutProfile;
 window.doLogin = doLogin;
 window.doRegister = doRegister;
+// Emergency door for auth glitches: if Firebase already has a user, open app shell
+// without waiting for dictionaries/profile. Useful after PWA/cache/auth weirdness.
+window.an2AuthRescue = async function an2AuthRescue() {
+  try {
+    if (!initSupabase()) throw new Error('Firebase init failed');
+    const sessionResult = await sb.auth.getSession();
+    const session = sessionResult?.data?.session;
+    if (!session?.user) throw new Error('Активной Firebase-сессии нет. Войди заново.');
+    setSbUser(session.user);
+    setActiveProfileName(getCachedProfileName(session.user) || session.user.email?.split('@')[0] || 'user', session.user);
+    VERBS_LOADED = true;
+    loginProfile(currentProfile);
+    return { ok: true, user: session.user.email || session.user.uid };
+  } catch (e) {
+    showAuthError('Auth rescue: ' + getErrorMessage(e));
+    return { ok: false, error: getErrorMessage(e) };
+  }
+};
 window.showToast = showToast;
 // True only for the admin account (you). Used to gate generation.
 window.isAdmin = () => canEditSharedDictionary();
@@ -606,10 +629,11 @@ export async function loadVerbsFromCloud(options = {}) {
       'Загрузка глаголов'
     );
     if (error) throw error;
-    if (!Array.isArray(data) || data.length === 0) throw new Error('таблица verbs вернула пустой ответ');
+    // v68: пустая личная база — это нормальное стартовое состояние, а не ошибка.
+    const rows = Array.isArray(data) ? data : [];
 
     VERBS.length = 0;
-    data.forEach(v => {
+    rows.forEach(v => {
       const inf = v.inf || v.infinitive || v.id || '';
       const group = v.group_name || v.group || v.verb_group || 'irr';
       const conj = v.conj || v.conjugations || v.forms || null;
@@ -709,6 +733,7 @@ export async function loadPhrasesFromCloud(options = {}) {
 // ════════════════════════════════════════════════
 
 const READER_BOOKS_KEY = 'an2_reader_books_v1';
+const READER_OWNER_KEY = 'an2_reader_active_owner_v1';
 let readerBooks = [];
 let readerCurrentBookId = null;
 let readerSelectedWord = null;
@@ -716,41 +741,252 @@ let readerSelectedParagraphIndex = 0;
 let readerSpeechActive = false;
 let readerPendingImportChapters = null;
 let readerPendingImportSource = 'manual_text';
+let readerActiveOwnerId = null;
+
+function readerSafeOwnerKey(owner) {
+  return String(owner || 'anon').replace(/[.#$\[\]/\s:]+/g, '_').slice(0, 96) || 'anon';
+}
+
+function readerCurrentOwnerId() {
+  if (readerActiveOwnerId) return readerActiveOwnerId;
+  const uid = (typeof sbGetCurrentUserId === 'function' ? sbGetCurrentUserId() : null) || sbUser?.uid || sbUser?.id || null;
+  if (uid) return 'u_' + readerSafeOwnerKey(uid);
+  if (isGuest || localStorage.getItem('an2_guest') === '1') return 'guest';
+  try { return localStorage.getItem(READER_OWNER_KEY) || 'anon'; }
+  catch { return 'anon'; }
+}
+
+function readerScopedKey(base) {
+  return `${base}::${readerCurrentOwnerId()}`;
+}
+
+function readerBooksStorageKey() { return readerScopedKey(READER_BOOKS_KEY); }
+function readerScopedStorageKey(base) { return readerScopedKey(base); }
+try {
+  window.an2ReaderStorageKey = readerScopedStorageKey;
+  window.an2ReaderOwnerId = readerCurrentOwnerId;
+} catch {}
+
+function profileNameStorageKey(user = null) {
+  const uid = user?.uid || user?.id || (typeof sbGetCurrentUserId === 'function' ? sbGetCurrentUserId() : null) || sbUser?.uid || sbUser?.id || null;
+  return uid ? `an2_profile_name::u_${readerSafeOwnerKey(uid)}` : 'an2_profile_name::anon';
+}
+function getCachedProfileName(user = null) {
+  try {
+    return localStorage.getItem(profileNameStorageKey(user)) || '';
+  } catch { return ''; }
+}
+function setCachedProfileName(name, user = null) {
+  const clean = String(name || '').trim();
+  if (!clean) return;
+  try { localStorage.setItem(profileNameStorageKey(user), clean); } catch {}
+  try { window.an2CurrentProfileName = clean; } catch {}
+}
+function setActiveProfileName(name, user = null) {
+  currentProfile = String(name || '').trim() || 'user';
+  setCurrentProfile(currentProfile);
+  setCachedProfileName(currentProfile, user);
+}
+
+function readerSwitchStorageOwner(owner = null) {
+  const uid = owner || (typeof sbGetCurrentUserId === 'function' ? sbGetCurrentUserId() : null) || sbUser?.uid || sbUser?.id || (isGuest ? 'guest' : 'anon');
+  const next = uid === 'guest' || uid === 'anon' ? uid : 'u_' + readerSafeOwnerKey(uid);
+  if (readerActiveOwnerId === next) return;
+  readerActiveOwnerId = next;
+  try { localStorage.setItem(READER_OWNER_KEY, next); } catch {}
+  readerBooks = [];
+  readerCurrentBookId = null;
+  readerWordStateCache = null;
+  try { readerLexicalCache = null; readerLexicalCacheOwnerId = null; } catch {}
+  readerCloudLoadedOnce = false;
+}
+
+window.an2ImportLegacyReaderBooks = function an2ImportLegacyReaderBooks() {
+  try {
+    // v68.17: legacy means the old unscoped key, not the current user's scoped key.
+    const raw = localStorage.getItem(READER_BOOKS_KEY);
+    if (!raw) return { ok: false, message: 'Старой общей библиотеки в localStorage нет.' };
+    const imported = JSON.parse(raw) || [];
+    const current = loadReaderBooks();
+    readerBooks = readerDedupeBooks([...(Array.isArray(current) ? current : []), ...(Array.isArray(imported) ? imported : [])]);
+    localStorage.setItem(readerBooksStorageKey(), JSON.stringify(readerBooks));
+    showToast('📚 Старая локальная библиотека перенесена в текущий аккаунт');
+    renderReaderScreen();
+    return { ok: true, owner: readerCurrentOwnerId(), count: readerBooks.length };
+  } catch (e) {
+    return { ok: false, message: e?.message || String(e) };
+  }
+};
 
 const READER_HIDE_TRANSLATIONS_KEY = 'an2_reader_hide_translations_v1';
 let readerTranslationsHidden = localStorage.getItem(READER_HIDE_TRANSLATIONS_KEY) !== '0';
+
+const READER_ZH_PINYIN_MODE_KEY = 'an2_reader_zh_pinyin_mode_v1';
+function readerZhPinyinMode() {
+  try { return localStorage.getItem(READER_ZH_PINYIN_MODE_KEY) || 'unknown'; } catch { return 'unknown'; }
+}
+function readerZhPinyinModeLabel(mode = readerZhPinyinMode()) {
+  return mode === 'off' ? '拼×' : mode === 'learning' ? '拼*' : '拼';
+}
+function readerZhPinyinModeTitle(mode = readerZhPinyinMode()) {
+  return mode === 'off'
+    ? 'Пиньинь выключен'
+    : mode === 'learning'
+      ? 'Пиньинь только для слов в изучении/проблемных'
+      : 'Пиньинь для всех не изученных китайских слов, где он есть';
+}
+function readerUpdatePinyinButton(lang = readerCurrentLang()) {
+  const btn = document.getElementById('reader-pinyin-btn');
+  if (!btn) return;
+  const isZh = readerCanonicalLang(lang) === 'zh';
+  btn.style.display = isZh ? 'flex' : 'none';
+  const mode = readerZhPinyinMode();
+  btn.textContent = readerZhPinyinModeLabel(mode);
+  btn.title = readerZhPinyinModeTitle(mode);
+  btn.setAttribute('aria-label', readerZhPinyinModeTitle(mode));
+  btn.classList.toggle('on', isZh && mode !== 'off');
+}
+function readerCycleZhPinyinMode() {
+  const cur = readerZhPinyinMode();
+  const next = cur === 'unknown' ? 'learning' : cur === 'learning' ? 'off' : 'unknown';
+  try { localStorage.setItem(READER_ZH_PINYIN_MODE_KEY, next); } catch {}
+  readerUpdatePinyinButton(readerCurrentLang());
+  renderReaderChapter();
+  showToast(next === 'off' ? '拼 Пиньинь выключен' : next === 'learning' ? '拼 Пиньинь только для слов в работе' : '拼 Пиньинь для всех новых слов');
+}
 
 let readerCloudLoadedOnce = false;
 let readerCloudSaveTimer = null;
 let readerCloudSaving = false;
 
+function readerBookParagraphCount(book = {}) {
+  return (book.chapters || []).reduce((n, ch) => n + ((ch.paragraphs || []).length), 0);
+}
+
+function readerBookCharCount(book = {}) {
+  return (book.chapters || []).reduce((n, ch) => n + ((ch.paragraphs || []).join('').replace(/\s+/g, '').length), 0);
+}
+
+function readerBookProgressScore(book = {}) {
+  const chIndex = Math.max(0, book.currentChapter || 0);
+  const pIndex = Math.max(0, book.currentParagraph || 0);
+  const before = (book.chapters || []).slice(0, chIndex).reduce((n, ch) => n + ((ch.paragraphs || []).length), 0);
+  return before + pIndex;
+}
+
+function readerHashString(str = '') {
+  let h = 2166136261;
+  const text = String(str || '');
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function readerBookImportKey(book = {}) {
+  if (book.importKey) return String(book.importKey);
+  const chapters = book.chapters || [];
+  const title = normalizeImportKey(book.title || '');
+  const author = normalizeImportKey(book.author || '');
+  const lang = readerCanonicalLang(book.lang || book.sourceLang || 'fr');
+  const paraCount = readerBookParagraphCount(book);
+  const charCount = readerBookCharCount(book);
+  const first = (chapters[0]?.paragraphs || []).slice(0, 2).join(' ').slice(0, 300);
+  const lastCh = chapters[chapters.length - 1] || {};
+  const last = (lastCh.paragraphs || []).slice(-2).join(' ').slice(-300);
+  return [lang, title, author, chapters.length, paraCount, charCount, readerHashString(first + '|' + last)].join('|');
+}
+
+function readerMergeBookDuplicates(a = {}, b = {}) {
+  const keep = readerBookProgressScore(b) > readerBookProgressScore(a) ? { ...b } : { ...a };
+  const other = keep.id === b.id ? a : b;
+  keep.id = keep.id || other.id || readerId();
+  keep.importKey = readerBookImportKey(keep);
+  keep.readerTranslations = { ...(other.readerTranslations || {}), ...(keep.readerTranslations || {}) };
+  keep.readerAnalyses = { ...(other.readerAnalyses || {}), ...(keep.readerAnalyses || {}) };
+  keep.comprehension = { ...(other.comprehension || {}), ...(keep.comprehension || {}) };
+  keep.createdAt = [a.createdAt, b.createdAt].filter(Boolean).sort()[0] || keep.createdAt || new Date().toISOString();
+  keep.updatedAt = [a.updatedAt, b.updatedAt].filter(Boolean).sort().pop() || keep.updatedAt || new Date().toISOString();
+  return keep;
+}
+
+function readerDedupeBooks(list = []) {
+  const byKey = new Map();
+  for (const raw of Array.isArray(list) ? list : []) {
+    if (!raw || !Array.isArray(raw.chapters)) continue;
+    const book = { ...raw, importKey: readerBookImportKey(raw) };
+    const key = book.importKey;
+    byKey.set(key, byKey.has(key) ? readerMergeBookDuplicates(byKey.get(key), book) : book);
+  }
+  return [...byKey.values()].sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+}
+
+window.an2ReaderCleanupDuplicates = async function an2ReaderCleanupDuplicates() {
+  loadReaderBooks();
+  const before = readerBooks.length;
+  readerBooks = readerDedupeBooks(readerBooks);
+  const removed = before - readerBooks.length;
+  localStorage.setItem(readerBooksStorageKey(), JSON.stringify(readerBooks));
+  if (removed > 0) {
+    showToast(`🧹 Убрано дублей: ${removed}`);
+    try { await saveReaderBooksToCloud({ replaceAll: true }); } catch(e) { console.warn('[reader cleanup] cloud cleanup skipped:', e?.message || e); }
+  } else showToast('Дублей не нашёл');
+  renderReaderScreen();
+  return { before, after: readerBooks.length, removed, owner: readerCurrentOwnerId() };
+};
+
+
 const READER_LEXICAL_CACHE_KEY = 'an2_reader_lexical_cache_v1';
 let readerLexicalCache = null;
+let readerLexicalCacheOwnerId = null;
 const readerLexicalInFlight = new Map();
 
+function readerLexicalCacheStorageKey() { return readerScopedKey(READER_LEXICAL_CACHE_KEY); }
+
 function loadReaderLexicalCache() {
-  if (readerLexicalCache) return readerLexicalCache;
-  try { readerLexicalCache = JSON.parse(localStorage.getItem(READER_LEXICAL_CACHE_KEY) || '{}') || {}; }
+  const owner = readerCurrentOwnerId();
+  if (readerLexicalCache && readerLexicalCacheOwnerId === owner) return readerLexicalCache;
+  try { readerLexicalCache = JSON.parse(localStorage.getItem(readerLexicalCacheStorageKey()) || '{}') || {}; }
   catch { readerLexicalCache = {}; }
+  readerLexicalCacheOwnerId = owner;
   return readerLexicalCache;
 }
 
 function saveReaderLexicalCache() {
-  try { localStorage.setItem(READER_LEXICAL_CACHE_KEY, JSON.stringify(loadReaderLexicalCache())); } catch {}
+  try { localStorage.setItem(readerLexicalCacheStorageKey(), JSON.stringify(loadReaderLexicalCache())); } catch {}
 }
 
-function readerLexicalCacheKey(word) {
-  return normalizeImportKey(readerNormalizeWord(word));
+window.an2ImportLegacyReaderLexicalCache = function an2ImportLegacyReaderLexicalCache() {
+  try {
+    const raw = localStorage.getItem(READER_LEXICAL_CACHE_KEY);
+    if (!raw) return { ok: false, message: 'Старого общего кэша слов нет.' };
+    const legacy = JSON.parse(raw) || {};
+    const current = loadReaderLexicalCache();
+    readerLexicalCache = { ...legacy, ...current };
+    readerLexicalCacheOwnerId = readerCurrentOwnerId();
+    saveReaderLexicalCache();
+    showToast('中文 Старый кэш слов перенесён в текущий аккаунт');
+    return { ok: true, owner: readerCurrentOwnerId(), count: Object.keys(readerLexicalCache).length };
+  } catch (e) {
+    return { ok: false, message: e?.message || String(e) };
+  }
+};
+
+function readerLexicalCacheKey(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  return `${l}:${normalizeImportKey(readerNormalizeWord(word, l))}`;
 }
 
-function readerGetCachedLexical(word) {
-  return loadReaderLexicalCache()[readerLexicalCacheKey(word)] || null;
+function readerGetCachedLexical(word, lang = null) {
+  return loadReaderLexicalCache()[readerLexicalCacheKey(word, lang)] || null;
 }
 
-function readerPutCachedLexical(word, data) {
+function readerPutCachedLexical(word, data, lang = null) {
   if (!word || !data) return;
   const cache = loadReaderLexicalCache();
-  cache[readerLexicalCacheKey(word)] = { ...data, cachedAt: new Date().toISOString() };
+  const l = readerCanonicalLang(lang || data.lang || readerCurrentLang());
+  cache[readerLexicalCacheKey(word, l)] = { ...data, lang: l, cachedAt: new Date().toISOString() };
   saveReaderLexicalCache();
 }
 
@@ -769,6 +1005,7 @@ function toggleReaderTranslations() {
 }
 
 const READER_WORD_STATE_KEY = 'an2_reader_word_state_v1';
+function readerWordStateStorageKey() { return readerScopedKey(READER_WORD_STATE_KEY); }
 const READER_AUTO_KNOWN_AFTER = 3;       // if seen in 3 selected chunks and never opened → stop highlighting
 const READER_FAMILIAR_AFTER = 5;         // saved word color softens
 const READER_LEARNED_AFTER = 10;         // saved word becomes known
@@ -815,128 +1052,618 @@ function readerQuickLookup(word) {
 }
 
 
+// v68.7 — stronger Chinese segmentation layer. DeepSeek stays for explanations;
+// segmentation + basic pinyin are cheap dictionary work.
+const READER_ZH_SEGMENT_URL = 'https://icudtjvnnoeibzxyyxfz.supabase.co/functions/v1/segment-text';
+const READER_ZH_SEGMENT_KEY = 'sb_publishable_U72E36q-R5ZXlWrbWor-Ug_t0gmHDfA';
+const READER_ZH_SEGMENT_CACHE_KEY = 'an2_zh_segment_cache_v4';
+const READER_ZH_SEGMENT_CACHE_MAX = 1800;
+// CC-CEDICT/lang_dictionary lookup: используем как технический слой для pinyin и факта существования слова.
+// Русский смысл всё равно добирает DeepSeek, если в базе нет ru-поля.
+const READER_ZH_DICT_URL = 'https://icudtjvnnoeibzxyyxfz.supabase.co/rest/v1/lang_dictionary';
+const READER_ZH_DICT_KEY = READER_ZH_SEGMENT_KEY;
+const READER_ZH_DICT_CACHE_KEY = 'an2_zh_ccedict_lookup_cache_v1';
+const READER_ZH_DICT_CACHE_MAX = 2500;
+// v68.15 — CC-CEDICT + EPUB/auth storage hardening.
+// It is loaded from /data/zh_dict_core.json and used for segmentation + pinyin.
+// DeepSeek still provides Russian contextual explanations when needed.
+const READER_ZH_CORE_JSON_URL = 'data/zh_dict_core.json?v=68.15-epub-user-deepseek';
+const READER_ZH_CORE_JSON_META_KEY = 'an2_zh_core_json_meta_v2';
+const readerZhSegmentInFlight = new Map();
+let readerZhSegmentCache = null;
+let readerZhDictCache = null;
+let readerZhCoreJson = null;
+let readerZhCoreJsonPromise = null;
+
+function readerNormalizeZhCoreEntry(row = {}, surface = '') {
+  // v68.14 supports compact CC-CEDICT rows:
+  //   "词": ["cí", "English fallback", "詞"]
+  // as well as older object rows.
+  if (Array.isArray(row)) {
+    row = { word: surface, pinyin: row[0] || '', en: row[1] || '', traditional: row[2] || '' };
+  }
+  const word = readerNormalizeWord(row.word || row.simplified || row.simp || row.hanzi || row.zh || surface, 'zh');
+  if (!word) return null;
+  const pinyin = String(row.pinyin || row.py || row.pinyin_marked || row.pinyin_tone || row.reading || '').trim();
+  const ru = String(row.ru || row.russian || row.translation_ru || row.meaning_ru || '').trim();
+  const enRaw = row.en || row.english || row.definition || row.definitions || row.meaning || row.gloss || '';
+  const en = Array.isArray(enRaw) ? enRaw.join('; ') : readerCleanCedictEnglish(enRaw);
+  return {
+    lang: 'zh', word, surface: surface || word, lemma: word,
+    pinyin, ru, translation: ru, meaning: ru,
+    en, english: en, traditional: row.traditional || row.trad || '',
+    pos: row.pos || row.part_of_speech || row.type || '',
+    level: row.level || row.hsk || row.hsk_level || 'CC-CEDICT',
+    form_note: pinyin || '',
+    note: row.note || 'полный локальный CC-CEDICT: pinyin + English fallback; русский смысл — через DeepSeek/ручной кэш',
+    _source: row.source || 'cc-cedict-full',
+    _note: 'полный локальный CC-CEDICT / data/zh_dict_core.json'
+  };
+}
+
+function readerBuildZhCoreJsonMap(payload) {
+  const map = {};
+  const src = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.entries)
+      ? payload.entries
+      : payload?.map || payload?.words || payload?.dict || payload || {};
+  if (Array.isArray(src)) {
+    src.forEach(row => {
+      const entry = readerNormalizeZhCoreEntry(row);
+      if (entry?.word) map[entry.word] = entry;
+    });
+  } else {
+    Object.entries(src || {}).forEach(([word, row]) => {
+      let raw;
+      if (Array.isArray(row)) raw = row;
+      else raw = { ...(row || {}), word: row?.word || word };
+      const entry = readerNormalizeZhCoreEntry(raw, word);
+      if (entry?.word) map[entry.word] = entry;
+    });
+  }
+  return Object.freeze(map);
+}
+
+function readerZhCoreJsonCount() {
+  return readerZhCoreJson ? Object.keys(readerZhCoreJson).length : 0;
+}
+
+function readerEnsureZhCoreJsonLoaded(options = {}) {
+  if (readerZhCoreJson) return Promise.resolve(readerZhCoreJson);
+  if (readerZhCoreJsonPromise) return readerZhCoreJsonPromise;
+  readerZhCoreJsonPromise = fetch(READER_ZH_CORE_JSON_URL, { cache: 'force-cache' })
+    .then(res => {
+      if (!res.ok) throw new Error('zh_dict_core.json HTTP ' + res.status);
+      return res.json();
+    })
+    .then(payload => {
+      readerZhCoreJson = readerBuildZhCoreJsonMap(payload);
+      try {
+        localStorage.setItem(READER_ZH_CORE_JSON_META_KEY, JSON.stringify({
+          loadedAt: new Date().toISOString(),
+          count: readerZhCoreJsonCount(),
+          version: payload?.version || 'unknown'
+        }));
+      } catch {}
+      if (options.rerender && readerCurrentLang() === 'zh') {
+        setTimeout(() => { try { renderReaderChapter(); } catch {} }, 0);
+      }
+      return readerZhCoreJson;
+    })
+    .catch(e => {
+      console.warn('[zh core json] load failed:', e?.message || e);
+      readerZhCoreJson = Object.freeze({});
+      return readerZhCoreJson;
+    });
+  return readerZhCoreJsonPromise;
+}
+
+function readerLookupChineseJsonEntry(w) {
+  const word = readerNormalizeWord(w, 'zh');
+  if (!word) return null;
+  return readerZhCoreJson?.[word] || null;
+}
+
+const READER_ZH_CORE_LEXICON = Object.freeze({
+  '我':{pinyin:'wǒ',ru:'я',pos:'pronoun',level:'HSK1'}, '你':{pinyin:'nǐ',ru:'ты',pos:'pronoun',level:'HSK1'},
+  '他':{pinyin:'tā',ru:'он',pos:'pronoun',level:'HSK1'}, '她':{pinyin:'tā',ru:'она',pos:'pronoun',level:'HSK1'},
+  '我们':{pinyin:'wǒmen',ru:'мы',pos:'pronoun',level:'HSK1'}, '他们':{pinyin:'tāmen',ru:'они',pos:'pronoun',level:'HSK1'},
+  '是':{pinyin:'shì',ru:'быть / являться',pos:'verb',level:'HSK1'}, '有':{pinyin:'yǒu',ru:'иметь; есть',pos:'verb',level:'HSK1'},
+  '没有':{pinyin:'méiyǒu',ru:'нет; не иметь',pos:'verb',level:'HSK1'}, '在':{pinyin:'zài',ru:'быть в/на; находиться',pos:'preposition',level:'HSK1'},
+  '不':{pinyin:'bù',ru:'не',pos:'adverb',level:'HSK1'}, '没':{pinyin:'méi',ru:'не; нет',pos:'adverb',level:'HSK1'},
+  '了':{pinyin:'le',ru:'частица завершённости/изменения',pos:'particle',level:'HSK1'}, '的':{pinyin:'de',ru:'частица принадлежности/определения',pos:'particle',level:'HSK1'},
+  '吗':{pinyin:'ma',ru:'вопросительная частица',pos:'particle',level:'HSK1'}, '呢':{pinyin:'ne',ru:'частица',pos:'particle',level:'HSK1'},
+  '很':{pinyin:'hěn',ru:'очень; связка перед прил.',pos:'adverb',level:'HSK1'}, '也':{pinyin:'yě',ru:'тоже',pos:'adverb',level:'HSK1'},
+  '都':{pinyin:'dōu',ru:'все; уже',pos:'adverb',level:'HSK1'}, '和':{pinyin:'hé',ru:'и; с',pos:'conjunction',level:'HSK1'},
+  '因为':{pinyin:'yīnwèi',ru:'потому что',pos:'conjunction',level:'HSK2'}, '所以':{pinyin:'suǒyǐ',ru:'поэтому',pos:'conjunction',level:'HSK2'},
+  '但是':{pinyin:'dànshì',ru:'но',pos:'conjunction',level:'HSK2'}, '如果':{pinyin:'rúguǒ',ru:'если',pos:'conjunction',level:'HSK3'},
+  '这个':{pinyin:'zhège',ru:'этот',pos:'determiner',level:'HSK1'}, '那个':{pinyin:'nàge',ru:'тот',pos:'determiner',level:'HSK1'},
+  '这些':{pinyin:'zhèxiē',ru:'эти',pos:'determiner',level:'HSK2'}, '那些':{pinyin:'nàxiē',ru:'те',pos:'determiner',level:'HSK2'},
+  '这':{pinyin:'zhè',ru:'это; этот',pos:'determiner',level:'HSK1'}, '那':{pinyin:'nà',ru:'то; тот',pos:'determiner',level:'HSK1'},
+  '什么':{pinyin:'shénme',ru:'что; какой',pos:'pronoun',level:'HSK1'}, '怎么':{pinyin:'zěnme',ru:'как',pos:'pronoun',level:'HSK1'},
+  '为什么':{pinyin:'wèishénme',ru:'почему',pos:'pronoun',level:'HSK2'}, '谁':{pinyin:'shéi',ru:'кто',pos:'pronoun',level:'HSK1'},
+  '多少':{pinyin:'duōshao',ru:'сколько',pos:'pronoun',level:'HSK1'}, '几':{pinyin:'jǐ',ru:'сколько; несколько',pos:'pronoun',level:'HSK1'},
+  '个':{pinyin:'gè',ru:'универсальное счётное слово',pos:'classifier',level:'HSK1'}, '本':{pinyin:'běn',ru:'счётное слово для книг',pos:'classifier',level:'HSK1'},
+  '人':{pinyin:'rén',ru:'человек',pos:'noun',level:'HSK1'}, '女人':{pinyin:'nǚrén',ru:'женщина',pos:'noun',level:'HSK1'},
+  '男人':{pinyin:'nánrén',ru:'мужчина',pos:'noun',level:'HSK1'}, '孩子':{pinyin:'háizi',ru:'ребёнок',pos:'noun',level:'HSK2'},
+  '朋友':{pinyin:'péngyou',ru:'друг',pos:'noun',level:'HSK1'}, '老师':{pinyin:'lǎoshī',ru:'учитель',pos:'noun',level:'HSK1'},
+  '学生':{pinyin:'xuésheng',ru:'ученик; студент',pos:'noun',level:'HSK1'}, '妈妈':{pinyin:'māma',ru:'мама',pos:'noun',level:'HSK1'},
+  '爸爸':{pinyin:'bàba',ru:'папа',pos:'noun',level:'HSK1'}, '哥哥':{pinyin:'gēge',ru:'старший брат',pos:'noun',level:'HSK1'},
+  '家':{pinyin:'jiā',ru:'дом; семья',pos:'noun',level:'HSK1'}, '学校':{pinyin:'xuéxiào',ru:'школа',pos:'noun',level:'HSK1'},
+  '公司':{pinyin:'gōngsī',ru:'компания',pos:'noun',level:'HSK2'}, '北京':{pinyin:'Běijīng',ru:'Пекин',pos:'proper_noun',level:'HSK1'},
+  '中国':{pinyin:'Zhōngguó',ru:'Китай',pos:'proper_noun',level:'HSK1'}, '俄罗斯':{pinyin:'Éluósī',ru:'Россия',pos:'proper_noun',level:'HSK2'},
+  '今天':{pinyin:'jīntiān',ru:'сегодня',pos:'noun',level:'HSK1'}, '昨天':{pinyin:'zuótiān',ru:'вчера',pos:'noun',level:'HSK1'},
+  '明天':{pinyin:'míngtiān',ru:'завтра',pos:'noun',level:'HSK1'}, '现在':{pinyin:'xiànzài',ru:'сейчас',pos:'noun',level:'HSK1'},
+  '时候':{pinyin:'shíhou',ru:'время; момент',pos:'noun',level:'HSK2'}, '认识':{pinyin:'rènshi',ru:'знать человека; быть знакомым',pos:'verb',level:'HSK1'},
+  '知道':{pinyin:'zhīdào',ru:'знать факт',pos:'verb',level:'HSK1'}, '看见':{pinyin:'kànjiàn',ru:'увидеть',pos:'verb',level:'HSK1'},
+  '看到':{pinyin:'kàndào',ru:'увидеть; заметить',pos:'verb',level:'HSK2'}, '看':{pinyin:'kàn',ru:'смотреть; читать',pos:'verb',level:'HSK1'},
+  '听':{pinyin:'tīng',ru:'слушать',pos:'verb',level:'HSK1'}, '说':{pinyin:'shuō',ru:'говорить',pos:'verb',level:'HSK1'},
+  '告诉':{pinyin:'gàosu',ru:'сказать; сообщить',pos:'verb',level:'HSK2'}, '问':{pinyin:'wèn',ru:'спрашивать',pos:'verb',level:'HSK1'},
+  '回答':{pinyin:'huídá',ru:'отвечать',pos:'verb',level:'HSK2'}, '想':{pinyin:'xiǎng',ru:'думать; хотеть; скучать',pos:'verb',level:'HSK1'},
+  '觉得':{pinyin:'juéde',ru:'считать; чувствовать',pos:'verb',level:'HSK2'}, '喜欢':{pinyin:'xǐhuan',ru:'нравиться; любить',pos:'verb',level:'HSK1'},
+  '爱':{pinyin:'ài',ru:'любить',pos:'verb',level:'HSK1'}, '去':{pinyin:'qù',ru:'идти; ехать',pos:'verb',level:'HSK1'},
+  '来':{pinyin:'lái',ru:'приходить',pos:'verb',level:'HSK1'}, '回':{pinyin:'huí',ru:'вернуться',pos:'verb',level:'HSK1'},
+  '住':{pinyin:'zhù',ru:'жить; проживать',pos:'verb',level:'HSK1'}, '走':{pinyin:'zǒu',ru:'идти пешком; уходить',pos:'verb',level:'HSK1'},
+  '买':{pinyin:'mǎi',ru:'покупать',pos:'verb',level:'HSK1'}, '卖':{pinyin:'mài',ru:'продавать',pos:'verb',level:'HSK2'},
+  '吃':{pinyin:'chī',ru:'есть',pos:'verb',level:'HSK1'}, '喝':{pinyin:'hē',ru:'пить',pos:'verb',level:'HSK1'},
+  '做':{pinyin:'zuò',ru:'делать',pos:'verb',level:'HSK1'}, '工作':{pinyin:'gōngzuò',ru:'работать; работа',pos:'verb',level:'HSK1'},
+  '学习':{pinyin:'xuéxí',ru:'учиться; изучать',pos:'verb',level:'HSK1'}, '睡觉':{pinyin:'shuìjiào',ru:'спать',pos:'verb',level:'HSK1'},
+  '高兴':{pinyin:'gāoxìng',ru:'радостный; радоваться',pos:'adjective',level:'HSK1'}, '好':{pinyin:'hǎo',ru:'хороший',pos:'adjective',level:'HSK1'},
+  '大':{pinyin:'dà',ru:'большой',pos:'adjective',level:'HSK1'}, '小':{pinyin:'xiǎo',ru:'маленький',pos:'adjective',level:'HSK1'},
+  '漂亮':{pinyin:'piàoliang',ru:'красивый',pos:'adjective',level:'HSK1'}, '书':{pinyin:'shū',ru:'книга',pos:'noun',level:'HSK1'},
+  '一本书':{pinyin:'yì běn shū',ru:'одна книга',pos:'phrase',level:'HSK1'}, '电影':{pinyin:'diànyǐng',ru:'фильм',pos:'noun',level:'HSK1'},
+  '音乐':{pinyin:'yīnyuè',ru:'музыка',pos:'noun',level:'HSK1'}, '水':{pinyin:'shuǐ',ru:'вода',pos:'noun',level:'HSK1'},
+  '茶':{pinyin:'chá',ru:'чай',pos:'noun',level:'HSK1'}, '米饭':{pinyin:'mǐfàn',ru:'рис; еда',pos:'noun',level:'HSK1'},
+  '钱':{pinyin:'qián',ru:'деньги',pos:'noun',level:'HSK1'}, '名字':{pinyin:'míngzi',ru:'имя',pos:'noun',level:'HSK1'},
+  '天气':{pinyin:'tiānqì',ru:'погода',pos:'noun',level:'HSK1'}, '东西':{pinyin:'dōngxi',ru:'вещь',pos:'noun',level:'HSK1'},
+  '事情':{pinyin:'shìqing',ru:'дело; событие',pos:'noun',level:'HSK2'}, '问题':{pinyin:'wèntí',ru:'вопрос; проблема',pos:'noun',level:'HSK2'},
+  '意思':{pinyin:'yìsi',ru:'смысл; значение',pos:'noun',level:'HSK2'}
+});
+
+// v68.7 — reading-oriented Chinese lexicon. This is not a full CC-CEDICT import yet;
+// it is a stronger local layer so the reader does not fall back to single hanzi too often.
+const READER_ZH_READING_LEXICON = Object.freeze({
+  '小卖铺':{pinyin:'xiǎomàipù',ru:'маленькая лавка',pos:'noun'}, '小卖部':{pinyin:'xiǎomàibù',ru:'маленький магазинчик',pos:'noun'},
+  '大声':{pinyin:'dàshēng',ru:'громко; громким голосом',pos:'adverb'}, '呼救':{pinyin:'hūjiù',ru:'звать на помощь',pos:'verb'},
+  '三个':{pinyin:'sān ge',ru:'три',pos:'phrase'}, '跑过去':{pinyin:'pǎo guòqù',ru:'подбежать; побежать туда',pos:'verb_phrase'},
+  '过去':{pinyin:'guòqù',ru:'прошлое; пройти/перейти туда',pos:'verb'}, '看热闹':{pinyin:'kàn rènao',ru:'смотреть на происшествие/толпу',pos:'verb_phrase'},
+  '热闹':{pinyin:'rènao',ru:'оживлённый; шумный; зрелище',pos:'adjective'}, '过了':{pinyin:'guò le',ru:'прошло; спустя',pos:'phrase'},
+  '一会儿':{pinyin:'yíhuìr',ru:'немного времени; через некоторое время',pos:'time_phrase'}, '一会':{pinyin:'yíhuì',ru:'немного времени',pos:'time_phrase'},
+  '保安':{pinyin:'bǎo’ān',ru:'охранник; охрана',pos:'noun'}, '警察':{pinyin:'jǐngchá',ru:'полиция; полицейский',pos:'noun'},
+  '从':{pinyin:'cóng',ru:'из; от; с',pos:'preposition'}, '山下':{pinyin:'shānxià',ru:'под горой; у подножия',pos:'place'},
+  '山上':{pinyin:'shānshàng',ru:'на горе',pos:'place'}, '抬出':{pinyin:'tái chū',ru:'вынести, подняв/неся',pos:'verb'},
+  '抬出了':{pinyin:'tái chū le',ru:'вынесли',pos:'verb_phrase'}, '用':{pinyin:'yòng',ru:'использовать; при помощи',pos:'verb/prep'},
+  '塑料布':{pinyin:'sùliàobù',ru:'пластиковая плёнка/брезент',pos:'noun'}, '塑料':{pinyin:'sùliào',ru:'пластик',pos:'noun'},
+  '包裹':{pinyin:'bāoguǒ',ru:'заворачивать; свёрток',pos:'verb/noun'}, '包裹的':{pinyin:'bāoguǒ de',ru:'завёрнутый в...',pos:'phrase'},
+  '遗体':{pinyin:'yítǐ',ru:'тело погибшего; останки',pos:'noun'}, '沾着':{pinyin:'zhān zhe',ru:'быть испачканным/покрытым',pos:'verb_phrase'},
+  '沾':{pinyin:'zhān',ru:'пачкаться; прилипать',pos:'verb'}, '着':{pinyin:'zhe',ru:'частица длительного состояния',pos:'particle'},
+  '血':{pinyin:'xuè',ru:'кровь',pos:'noun'}, '所有人':{pinyin:'suǒyǒu rén',ru:'все люди; все',pos:'noun_phrase'},
+  '所有':{pinyin:'suǒyǒu',ru:'все; весь',pos:'determiner'}, '脸色':{pinyin:'liǎnsè',ru:'цвет лица; выражение лица',pos:'noun'},
+  '难看':{pinyin:'nánkàn',ru:'выглядеть плохо; некрасивый',pos:'adjective'},
+  '尸体':{pinyin:'shītǐ',ru:'труп',pos:'noun'}, '死人':{pinyin:'sǐrén',ru:'мертвец',pos:'noun'}, '死亡':{pinyin:'sǐwáng',ru:'смерть; умереть',pos:'noun/verb'},
+  '发现':{pinyin:'fāxiàn',ru:'обнаружить; заметить',pos:'verb'}, '突然':{pinyin:'tūrán',ru:'вдруг; внезапно',pos:'adverb'},
+  '马上':{pinyin:'mǎshàng',ru:'сразу; немедленно',pos:'adverb'}, '已经':{pinyin:'yǐjīng',ru:'уже',pos:'adverb'},
+  '开始':{pinyin:'kāishǐ',ru:'начинать; начало',pos:'verb/noun'}, '地方':{pinyin:'dìfang',ru:'место',pos:'noun'},
+  '旁边':{pinyin:'pángbiān',ru:'рядом; сбоку',pos:'place'}, '里面':{pinyin:'lǐmiàn',ru:'внутри',pos:'place'}, '外面':{pinyin:'wàimiàn',ru:'снаружи',pos:'place'},
+  '前面':{pinyin:'qiánmiàn',ru:'впереди',pos:'place'}, '后面':{pinyin:'hòumiàn',ru:'позади',pos:'place'},
+  '起来':{pinyin:'qǐlái',ru:'встать; начать действие',pos:'resultative'}, '下去':{pinyin:'xiàqù',ru:'спуститься/продолжать вниз',pos:'verb'},
+  '出来':{pinyin:'chūlái',ru:'выйти наружу',pos:'verb'}, '进去':{pinyin:'jìnqù',ru:'войти внутрь',pos:'verb'},
+  '一下':{pinyin:'yíxià',ru:'немного; разок',pos:'measure'}, '一下子':{pinyin:'yíxiàzi',ru:'вдруг; сразу',pos:'adverb'},
+  '时候':{pinyin:'shíhou',ru:'время; момент',pos:'noun'}, '时候儿':{pinyin:'shíhour',ru:'момент',pos:'noun'},
+  '觉得':{pinyin:'juéde',ru:'считать; чувствовать',pos:'verb'}, '好像':{pinyin:'hǎoxiàng',ru:'как будто; похоже',pos:'adverb'},
+  '可能':{pinyin:'kěnéng',ru:'возможно; мочь',pos:'adverb/verb'}, '一定':{pinyin:'yídìng',ru:'обязательно; наверняка',pos:'adverb'},
+  '不是':{pinyin:'bú shì',ru:'не является; не то',pos:'phrase'}, '就是':{pinyin:'jiùshì',ru:'именно; то есть',pos:'phrase'},
+  '为什么':{pinyin:'wèishénme',ru:'почему',pos:'question'}, '怎么办':{pinyin:'zěnme bàn',ru:'что делать?',pos:'phrase'},
+  '没有人':{pinyin:'méiyǒu rén',ru:'никого нет; никто',pos:'phrase'}, '没有什么':{pinyin:'méiyǒu shénme',ru:'ничего особенного',pos:'phrase'},
+  '看着':{pinyin:'kàn zhe',ru:'смотреть на; глядя',pos:'verb_phrase'}, '听见':{pinyin:'tīngjiàn',ru:'услышать',pos:'verb'},
+  '声音':{pinyin:'shēngyīn',ru:'голос; звук',pos:'noun'}, '身上':{pinyin:'shēnshang',ru:'на теле; при себе',pos:'place'},
+  '手里':{pinyin:'shǒulǐ',ru:'в руке',pos:'place'}, '心里':{pinyin:'xīnlǐ',ru:'в душе; в сердце',pos:'place'},
+  '这时':{pinyin:'zhè shí',ru:'в этот момент',pos:'time_phrase'}, '这时候':{pinyin:'zhè shíhou',ru:'в это время',pos:'time_phrase'},
+  '然后':{pinyin:'ránhòu',ru:'потом; затем',pos:'conjunction'}, '以后':{pinyin:'yǐhòu',ru:'после; потом',pos:'time'},
+  '以前':{pinyin:'yǐqián',ru:'раньше; до',pos:'time'}, '终于':{pinyin:'zhōngyú',ru:'наконец',pos:'adverb'}
+});
+
+function readerLookupChineseLocalEntry(w) {
+  const word = readerNormalizeWord(w, 'zh');
+  if (!word) return null;
+  return READER_ZH_READING_LEXICON[word] || READER_ZH_CORE_LEXICON[word] || readerLookupChineseJsonEntry(word) || null;
+}
+
+function readerIsHanToken(word) {
+  return /^[㐀-鿿]+$/.test(String(word || ''));
+}
+
+function readerHanLength(word) {
+  return Array.from(String(word || '')).filter(ch => /[㐀-鿿]/.test(ch)).length;
+}
+
+function readerChineseSegScore(words) {
+  const arr = Array.isArray(words) ? words : [];
+  let score = 0;
+  for (const raw of arr) {
+    const w = String(raw || '');
+    if (!/[㐀-鿿]/.test(w)) continue;
+    const len = readerHanLength(w);
+    if (len >= 4) score += len * 3.2;
+    else if (len >= 2) score += len * 2.2;
+    else score -= 0.55;
+    if (readerLookupChineseLocalEntry(w)) score += 2.5;
+  }
+  score -= arr.length * 0.06;
+  return score;
+}
+
+function readerChooseBestChineseSegmentation(text, remoteWords, localWords) {
+  const remote = (Array.isArray(remoteWords) ? remoteWords : []).filter(x => x !== '');
+  const local = (Array.isArray(localWords) ? localWords : []).filter(x => x !== '');
+  if (!remote.length) return local;
+  if (!local.length) return remote;
+  const rs = readerChineseSegScore(remote);
+  const ls = readerChineseSegScore(local);
+  return rs > ls + 1.2 ? remote : local;
+}
+
+function loadReaderZhSegmentCache() {
+  if (readerZhSegmentCache) return readerZhSegmentCache;
+  try { readerZhSegmentCache = JSON.parse(localStorage.getItem(READER_ZH_SEGMENT_CACHE_KEY) || '{}') || {}; }
+  catch { readerZhSegmentCache = {}; }
+  return readerZhSegmentCache;
+}
+function saveReaderZhSegmentCache() {
+  const cache = loadReaderZhSegmentCache();
+  try {
+    const keys = Object.keys(cache).sort((a,b) => (cache[b]?.t || 0) - (cache[a]?.t || 0));
+    for (const k of keys.slice(READER_ZH_SEGMENT_CACHE_MAX)) delete cache[k];
+    localStorage.setItem(READER_ZH_SEGMENT_CACHE_KEY, JSON.stringify(cache));
+  } catch(e) { console.warn('[zh segment] cache save failed', e); }
+}
+function readerTextHash(text) {
+  const s = String(text || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36) + '_' + s.length;
+}
+function loadReaderZhDictCache() {
+  if (readerZhDictCache) return readerZhDictCache;
+  try { readerZhDictCache = JSON.parse(localStorage.getItem(READER_ZH_DICT_CACHE_KEY) || '{}') || {}; }
+  catch { readerZhDictCache = {}; }
+  return readerZhDictCache;
+}
+function saveReaderZhDictCache() {
+  const cache = loadReaderZhDictCache();
+  try {
+    const keys = Object.keys(cache).sort((a,b) => (cache[b]?.t || 0) - (cache[a]?.t || 0));
+    for (const k of keys.slice(READER_ZH_DICT_CACHE_MAX)) delete cache[k];
+    localStorage.setItem(READER_ZH_DICT_CACHE_KEY, JSON.stringify(cache));
+  } catch(e) { console.warn('[zh dict] cache save failed', e); }
+}
+function readerCleanCedictEnglish(value) {
+  return String(value || '')
+    .replace(/CL:[^/;]+/g, '')
+    .replace(/\s*;\s*/g, '; ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function readerNormalizeChineseDictRow(row = {}, surface = '') {
+  const word = readerNormalizeWord(row.word || row.simplified || row.simplified_word || row.hanzi || row.zh || row.term || surface, 'zh');
+  if (!word) return null;
+  const pinyin = String(row.pinyin || row.py || row.pinyin_marked || row.pinyin_tone || row.pronunciation || row.reading || '').trim();
+  const ru = String(row.ru || row.russian || row.translation_ru || row.meaning_ru || row.gloss_ru || '').trim();
+  const enRaw = row.en || row.english || row.definition || row.definitions || row.meaning || row.gloss || '';
+  const en = Array.isArray(enRaw) ? enRaw.join('; ') : readerCleanCedictEnglish(enRaw);
+  const pos = row.pos || row.part_of_speech || row.type || 'other';
+  const level = row.hsk || row.level || row.hsk_level || '';
+  return {
+    lang: 'zh', word, surface: surface || word, lemma: word, pos,
+    pinyin, ru, translation: ru, meaning: ru,
+    en, english: en, level: level || 'CC-CEDICT',
+    form_note: pinyin || '',
+    note: 'CC-CEDICT',
+    _source: 'cc-cedict',
+    _note: 'CC-CEDICT / lang_dictionary'
+  };
+}
+async function readerFetchChineseDictEntry(word) {
+  const w = readerNormalizeWord(word, 'zh');
+  if (!w) return null;
+  const cache = loadReaderZhDictCache();
+  const key = 'zh:' + w;
+  if (cache[key]?.miss && Date.now() - (cache[key]?.t || 0) < 86400000) return null;
+  if (cache[key]?.entry) return cache[key].entry;
+  try {
+    const url = `${READER_ZH_DICT_URL}?language=eq.zh&word=eq.${encodeURIComponent(w)}&select=*&limit=5`;
+    const res = await fetch(url, {
+      headers: { 'apikey': READER_ZH_DICT_KEY, 'Authorization': `Bearer ${READER_ZH_DICT_KEY}` }
+    });
+    if (!res.ok) throw new Error('lang_dictionary HTTP ' + res.status);
+    const rows = await res.json();
+    const row = Array.isArray(rows) ? rows[0] : null;
+    const entry = row ? readerNormalizeChineseDictRow(row, w) : null;
+    const c = loadReaderZhDictCache();
+    if (entry) {
+      c[key] = { entry, t: Date.now() };
+      // Сохраняем pinyin/техническую запись в общий lexical cache, чтобы ruby работал без повторного запроса.
+      readerPutCachedLexical(w, entry, 'zh');
+    } else {
+      c[key] = { miss: true, t: Date.now() };
+    }
+    saveReaderZhDictCache();
+    return entry;
+  } catch (e) {
+    console.warn('[zh dict] lookup failed:', e?.message || e);
+    return null;
+  }
+}
+function readerLookupChineseWord(word) {
+  const w = readerNormalizeWord(word, 'zh');
+  if (!w) return null;
+  const cached = readerGetCachedLexical(w, 'zh');
+  if (cached) return { ...cached, _source: 'cache', _note: 'из кэша DeepSeek' };
+  const hit = readerLookupChineseLocalEntry(w);
+  if (!hit) return null;
+  const src = READER_ZH_READING_LEXICON[w] ? 'zh_reading' : READER_ZH_CORE_LEXICON[w] ? 'zh_core' : hit._source || 'zh_core_json';
+  return { ...hit, word: w, surface: word, lemma: w, pinyin: hit.pinyin || '', _source: src, _note: hit._note || 'локальный китайский словарь' };
+}
+function readerBuildChineseWordSet() {
+  // Dynamic/user words only. The full CC-CEDICT map can be 120k+ entries,
+  // so we do NOT copy it into a Set on every paragraph render.
+  if (!readerZhCoreJson && !readerZhCoreJsonPromise) readerEnsureZhCoreJsonLoaded({ rerender: true });
+  const dict = new Set([...Object.keys(READER_ZH_CORE_LEXICON), ...Object.keys(READER_ZH_READING_LEXICON)]);
+  const lex = loadReaderLexicalCache();
+  Object.keys(lex || {}).forEach(k => {
+    if (!k.startsWith('zh:')) return;
+    const item = lex[k] || {};
+    [item.word, item.surface, item.lemma].forEach(x => { const w = readerNormalizeWord(x, 'zh'); if (w) dict.add(w); });
+  });
+  const states = loadReaderWordState();
+  Object.values(states || {}).forEach(st => {
+    if (!st || readerCanonicalLang(st.lang) !== 'zh') return;
+    const w = readerNormalizeWord(st.word, 'zh');
+    if (w) dict.add(w);
+  });
+  return dict;
+}
+
+function readerChineseWordExistsDirect(word, dynamicDict = null) {
+  const w = String(word || '');
+  return !!(
+    (dynamicDict && dynamicDict.has(w)) ||
+    READER_ZH_READING_LEXICON[w] ||
+    READER_ZH_CORE_LEXICON[w] ||
+    (readerZhCoreJson && readerZhCoreJson[w])
+  );
+}
+function readerSegmentChineseLocal(text) {
+  const s = String(text || '');
+  const dynamicDict = readerBuildChineseWordSet();
+  const result = [];
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (/\s/.test(ch)) { result.push(ch); i++; continue; }
+    if (!/[㐀-鿿]/.test(ch)) {
+      let j = i + 1;
+      while (j < s.length && !/\s/.test(s[j]) && !/[㐀-鿿]/.test(s[j])) j++;
+      result.push(s.slice(i, j));
+      i = j;
+      continue;
+    }
+    let best = '';
+    const maxLen = Math.min(12, s.length - i);
+    for (let len = maxLen; len >= 1; len--) {
+      const slice = s.slice(i, i + len);
+      if (len === 1 || readerChineseWordExistsDirect(slice, dynamicDict)) { best = slice; break; }
+    }
+    result.push(best || ch);
+    i += (best || ch).length;
+  }
+  return result.filter(x => x !== '');
+}
+async function readerFetchChineseSegmentation(text) {
+  const s = String(text || '');
+  if (!s.trim() || !/[㐀-鿿]/.test(s)) return null;
+  const res = await fetch(READER_ZH_SEGMENT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': READER_ZH_SEGMENT_KEY, 'Authorization': `Bearer ${READER_ZH_SEGMENT_KEY}` },
+    body: JSON.stringify({ text: s })
+  });
+  if (!res.ok) throw new Error('segment-text HTTP ' + res.status);
+  const data = await res.json();
+  const words = Array.isArray(data?.words) ? data.words : [];
+  return words.filter(x => x !== '');
+}
+function readerScheduleChineseSegmentation(text) {
+  const s = String(text || '');
+  if (!s.trim() || !/[㐀-鿿]/.test(s)) return;
+  const key = readerTextHash(s);
+  const cache = loadReaderZhSegmentCache();
+  if (cache[key]?.words?.length) return;
+  if (cache[key]?.failed && Date.now() - (cache[key]?.t || 0) < 3600000) return;
+  if (readerZhSegmentInFlight.has(key)) return;
+  const p = readerFetchChineseSegmentation(s)
+    .then(words => {
+      const local = readerSegmentChineseLocal(s);
+      const picked = readerChooseBestChineseSegmentation(s, words, local);
+      if (Array.isArray(picked) && picked.length) {
+        const c = loadReaderZhSegmentCache();
+        c[key] = { words: picked, t: Date.now(), source: picked === words ? 'segment-text' : 'local-dict-preferred' };
+        saveReaderZhSegmentCache();
+        try { if (readerCurrentLang() === 'zh') renderReaderChapter(); } catch {}
+      }
+    })
+    .catch(e => {
+      const c = loadReaderZhSegmentCache();
+      c[key] = { failed: true, t: Date.now(), source: 'local-fallback' };
+      saveReaderZhSegmentCache();
+      console.warn('[zh segment] remote failed, local fallback stays active:', e?.message || e);
+    })
+    .finally(() => readerZhSegmentInFlight.delete(key));
+  readerZhSegmentInFlight.set(key, p);
+}
+
+
 function loadReaderWordState() {
   if (readerWordStateCache) return readerWordStateCache;
   try {
-    readerWordStateCache = JSON.parse(localStorage.getItem(READER_WORD_STATE_KEY) || '{}') || {};
+    readerWordStateCache = JSON.parse(localStorage.getItem(readerWordStateStorageKey()) || '{}') || {};
   } catch { readerWordStateCache = {}; }
   return readerWordStateCache;
 }
 
 function saveReaderWordState() {
-  try { localStorage.setItem(READER_WORD_STATE_KEY, JSON.stringify(loadReaderWordState())); } catch(e) { console.warn('[reader word state] save failed', e); }
+  try { localStorage.setItem(readerWordStateStorageKey(), JSON.stringify(loadReaderWordState())); } catch(e) { console.warn('[reader word state] save failed', e); }
 }
 
-function readerWordStateKey(word) { return normalizeImportKey(readerNormalizeWord(word)); }
-
-function readerIsCommonWord(word) {
-  const w = readerNormalizeWord(word);
-  return !w || w.length <= 1 || READER_COMMON_WORDS.has(w) || READER_COMMON_WORDS.has(w.replace(/^l'/,''));
+function readerWordStateKey(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  return `${l}:${normalizeImportKey(readerNormalizeWord(word, l))}`;
 }
 
-function readerGetWordState(word) {
-  const key = readerWordStateKey(word);
+function readerIsCommonWord(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  const w = readerNormalizeWord(word, l);
+  if (!w) return true;
+  if (l === 'zh') return false;
+  return w.length <= 1 || READER_COMMON_WORDS.has(w) || READER_COMMON_WORDS.has(w.replace(/^l'/,''));
+}
+
+function readerGetWordState(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  const key = readerWordStateKey(word, l);
   const store = loadReaderWordState();
-  if (!store[key]) store[key] = { word: readerNormalizeWord(word), seen: 0, clicked: 0, saved: false, known: false, status: 'new', places: {}, updatedAt: new Date().toISOString() };
+  if (!store[key]) store[key] = { word: readerNormalizeWord(word, l), lang: l, seen: 0, clicked: 0, saved: false, known: false, status: 'new', places: {}, updatedAt: new Date().toISOString() };
   return store[key];
 }
 
-function readerTouchWordState(word) {
-  const st = readerGetWordState(word);
+function readerTouchWordState(word, lang = null) {
+  const st = readerGetWordState(word, lang);
   st.updatedAt = new Date().toISOString();
   return st;
 }
 
 function readerTrackParagraphWords(book, ch, paragraphIndex, paragraphText) {
-  if (!book || !ch || !paragraphText) return;
-  const place = `${book.id}:${ch.id}:${paragraphIndex}`;
-  const unique = new Set(readerTokenizeParagraph(paragraphText)
-    .map(readerNormalizeWord)
-    .filter(w => w && /[a-zàâçéèêëîïôùûüÿœæ]/i.test(w)));
-
-  let changed = false;
-  for (const word of unique) {
-    const st = readerGetWordState(word);
-    if (!st.places) st.places = {};
-    if (!st.places[place]) {
-      st.places[place] = true;
-      st.seen = Object.keys(st.places).length;
-      st.updatedAt = new Date().toISOString();
-      changed = true;
-    }
-    if (readerIsCommonWord(word)) {
-      st.known = true; st.status = 'known'; changed = true;
-    } else if (!st.saved && !st.clicked && !st.known && st.seen >= READER_AUTO_KNOWN_AFTER) {
-      st.known = true;
-      st.autoKnown = true;
-      st.status = 'known';
-      changed = true;
-    } else if (st.saved && !st.known && st.seen >= READER_LEARNED_AFTER) {
+  if (!book || !ch) return;
+  const lang = readerBookLang(book);
+  const bookId = book.id || 'book';
+  const chapterId = ch.id || String(book.currentChapter || 0);
+  const unique = new Set(readerTokenizeParagraph(paragraphText, lang)
+    .map(tok => readerNormalizeWord(tok, lang))
+    .filter(Boolean));
+  unique.forEach(word => {
+    const st = readerGetWordState(word, lang);
+    st.places = st.places || {};
+    st.places[`${bookId}:${chapterId}:${paragraphIndex}`] = true;
+    // v68.21: seen must mean "how many distinct reader places/paragraphs contained this word".
+    // Before it stayed at 1 forever, so words almost never became yellow by repeated exposure.
+    st.seen = Object.keys(st.places).length;
+    st.updatedAt = new Date().toISOString();
+    if (readerIsCommonWord(word, lang)) {
       st.known = true;
       st.status = 'known';
-      changed = true;
-    } else if (st.saved && !st.known && st.seen >= READER_FAMILIAR_AFTER) {
-      st.status = 'familiar';
-      changed = true;
     }
-  }
-  if (changed) saveReaderWordState();
+  });
+  saveReaderWordState();
 }
 
-function readerMarkWordClicked(word) {
-  if (!word || readerIsCommonWord(word)) return;
-  const st = readerTouchWordState(word);
+function readerMarkWordClicked(word, lang = null) {
+  if (!word || readerIsCommonWord(word, lang)) return;
+  const st = readerTouchWordState(word, lang);
   st.clicked = (st.clicked || 0) + 1;
   if (!st.saved && !st.known) st.status = 'looked';
   saveReaderWordState();
 }
 
-function readerMarkWordSaved(word, lemma = null) {
-  const st = readerTouchWordState(lemma || word);
+function readerMarkWordSaved(word, lemma = null, lang = null) {
+  const st = readerTouchWordState(lemma || word, lang);
   st.saved = true;
   st.known = false;
   st.status = st.seen >= READER_FAMILIAR_AFTER ? 'familiar' : 'learning';
   st.updatedAt = new Date().toISOString();
-  if (word && lemma && readerWordStateKey(word) !== readerWordStateKey(lemma)) {
-    const form = readerTouchWordState(word);
+  if (word && lemma && readerWordStateKey(word, lang) !== readerWordStateKey(lemma, lang)) {
+    const form = readerTouchWordState(word, lang);
     form.saved = true;
-    form.linkedLemma = readerNormalizeWord(lemma);
+    form.linkedLemma = readerNormalizeWord(lemma, lang);
     form.status = 'learning';
   }
   saveReaderWordState();
 }
 
-function readerMarkWordKnown(word) {
-  const st = readerTouchWordState(word);
+function readerMarkWordKnown(word, lang = null) {
+  const st = readerTouchWordState(word, lang);
   st.known = true; st.status = 'known'; st.autoKnown = false;
   saveReaderWordState();
 }
 
-function readerWordVisual(word) {
-  const w = readerNormalizeWord(word);
-  if (!w || readerIsCommonWord(w)) return { cls: 'rw-known', title: 'служебное/частое слово' };
-  if (readerFindVerbByForm(w)) return { cls: 'rw-known', title: 'форма известного глагола' };
-  if (readerFindKnownNoun(w)) return { cls: 'rw-saved', title: 'есть в словаре' };
-  const st = loadReaderWordState()[readerWordStateKey(w)];
-  if (!st) return { cls: 'rw-new', title: 'новое слово' };
-  if (st.known || st.status === 'known') return { cls: 'rw-known', title: st.autoKnown ? `авто-изучено: ${st.seen || 0} встреч` : 'изучено' };
-  if (st.saved) {
-    if (st.status === 'familiar' || (st.seen || 0) >= READER_FAMILIAR_AFTER) return { cls: 'rw-familiar', title: `закрепляется: ${st.seen || 0} встреч` };
-    return { cls: 'rw-learning', title: `в словаре: ${st.seen || 0} встреч` };
-  }
-  if ((st.clicked || 0) > 0 || st.status === 'looked') return { cls: 'rw-looked', title: `смотрел перевод: ${st.clicked || 0}` };
-  if ((st.seen || 0) >= 2) return { cls: 'rw-seen', title: `видел ${st.seen} раза, скоро исчезнет` };
-  return { cls: 'rw-new', title: 'новое слово' };
-}
+function readerWordVisual(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  const w = readerNormalizeWord(word, l);
+  if (!w) return { cls: 'rw-known', title: 'служебное/частое слово' };
 
+  const st = loadReaderWordState()[readerWordStateKey(w, l)];
+
+  // v68.17: user/manual reader status must win over automatic dictionary coloring.
+  // Before this, a French noun already present in the dictionary stayed blue even after
+  // being marked as known/problem/familiar. That made French highlights look random.
+  if (st?.known || st?.status === 'known') return { cls: 'rw-known', title: 'изучено' };
+  if (st?.status === 'problem' || st?.status === 'hard') return { cls: 'rw-problem', title: 'проблемное слово' };
+  if (st?.status === 'familiar') return { cls: 'rw-familiar', title: 'закрепляется' };
+  if (st?.status === 'learning' || st?.saved) return { cls: 'rw-learning', title: 'изучаю' };
+  if (st?.status === 'looked' || (st?.clicked || 0) > 0) return { cls: 'rw-looked', title: `просмотрено ${st?.clicked || 1} раз` };
+
+  // Automatic background logic comes only after explicit status.
+  if (readerIsCommonWord(w, l)) return { cls: 'rw-known', title: 'служебное/частое слово' };
+  if (l === 'fr') {
+    if (readerFindVerbByForm(w)) return { cls: 'rw-known', title: 'форма известного глагола' };
+    if (readerFindKnownNoun(w)) return { cls: 'rw-saved', title: 'есть в словаре' };
+  }
+  if ((st?.seen || 0) > 2) return { cls: 'rw-seen', title: 'часто встречалось, но не открывал' };
+  return { cls: 'rw-new', title: l === 'zh' ? 'новый китайский сегмент' : 'новое слово' };
+}
 
 function readerWordStatusRu(st) {
   if (!st) return 'новое';
   if (st.known || st.status === 'known') return st.autoKnown ? 'авто-изучено' : 'изучено';
-  if (st.saved) return st.status === 'familiar' ? 'закрепляется' : 'в словаре';
+  if (st.status === 'problem' || st.status === 'hard') return 'проблемное';
+  if (st.status === 'learning') return 'изучаю';
+  if (st.status === 'familiar') return 'закрепляется';
+  if (st.saved) return 'в словаре';
   if ((st.clicked || 0) > 0 || st.status === 'looked') return 'просмотрено';
   if ((st.seen || 0) > 0) return `видел ${st.seen}`;
   return 'новое';
+}
+
+function readerExtractPinyin(data = {}) {
+  return String(data.pinyin || data.py || data.pinyin_marked || data.pinyinTone || '').trim();
+}
+
+function readerShouldShowInlinePinyin(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  if (l !== 'zh') return false;
+  const norm = readerNormalizeWord(word, l);
+  if (!norm) return false;
+  const st = loadReaderWordState()[readerWordStateKey(norm, l)];
+  if (st?.known || st?.status === 'known') return false;
+
+  const mode = readerZhPinyinMode();
+  if (mode === 'off') return false;
+
+  const inWork = !!(st?.status === 'learning' || st?.status === 'problem' || st?.status === 'hard' || st?.status === 'familiar' || st?.saved);
+  if (mode === 'learning') return inWork;
+
+  // Default for Chinese reading: show pinyin for every not-yet-known token where dictionary pinyin exists.
+  // Known words hide pinyin, so the scaffold naturally disappears.
+  return true;
+}
+
+function readerInlinePinyinForWord(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  if (l !== 'zh' || !readerShouldShowInlinePinyin(word, l)) return '';
+  const cached = readerGetCachedLexical(word, l);
+  const fromCache = cached ? readerExtractPinyin(cached) : '';
+  if (fromCache) return fromCache;
+  const local = readerLookupChineseWord(word);
+  return local ? readerExtractPinyin(local) : '';
 }
 
 function showReaderViewedWords() {
@@ -989,7 +1716,43 @@ function readerId() {
   return 'book_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 }
 
-function readerNormalizeWord(word) {
+// v68.3: языковые рельсы для читалки. Французский остаётся поведением по умолчанию.
+const READER_LANG_META = Object.freeze({
+  fr: { code: 'fr', label: 'Français', short: 'FR', emoji: '🇫🇷', speech: 'fr-FR' },
+  zh: { code: 'zh', label: '中文', short: 'ZH', emoji: '🇨🇳', speech: 'zh-CN' },
+});
+
+function readerCanonicalLang(lang) {
+  const raw = String(lang || '').trim().toLowerCase();
+  if (raw === 'zh' || raw.startsWith('zh-') || raw === 'cn' || raw === 'chinese') return 'zh';
+  return 'fr';
+}
+
+function readerBookLang(book = null) {
+  return readerCanonicalLang(book?.lang || book?.sourceLang || 'fr');
+}
+
+function readerCurrentLang() {
+  return readerBookLang(readerCurrentBook?.() || null);
+}
+
+function readerLangMeta(lang) {
+  return READER_LANG_META[readerCanonicalLang(lang)] || READER_LANG_META.fr;
+}
+
+function readerLangBadge(lang) {
+  const m = readerLangMeta(lang);
+  return `${m.emoji} ${m.short}`;
+}
+
+function readerNormalizeWord(word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  if (l === 'zh') {
+    return String(word || '')
+      .normalize('NFC')
+      .replace(/^[\s，。！？；：、,.!?;:"“”‘’'《》〈〉（）()【】\[\]{}…—\-]+|[\s，。！？；：、,.!?;:"“”‘’'《》〈〉（）()【】\[\]{}…—\-]+$/g, '')
+      .trim();
+  }
   return String(word || '')
     .toLowerCase()
     .normalize('NFC')
@@ -998,16 +1761,46 @@ function readerNormalizeWord(word) {
     .trim();
 }
 
-function readerTokenizeParagraph(p) {
+function readerTokenizeChineseParagraph(text) {
+  const s = String(text || '');
+  if (!s) return [];
+  if (!readerZhCoreJson && !readerZhCoreJsonPromise) readerEnsureZhCoreJsonLoaded({ rerender: true });
+  const key = readerTextHash(s);
+  const cached = loadReaderZhSegmentCache()[key];
+  const local = readerSegmentChineseLocal(s);
+  if (Array.isArray(cached?.words) && cached.words.length) {
+    return readerChooseBestChineseSegmentation(s, cached.words, local);
+  }
+
+  // Remote dictionary segmenter runs in background; reading never blocks.
+  readerScheduleChineseSegmentation(s);
+
+  if (local.length) return local;
+
+  try {
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+      const seg = new Intl.Segmenter('zh', { granularity: 'word' });
+      return Array.from(seg.segment(s), x => x.segment).filter(x => x !== '');
+    }
+  } catch {}
+  return Array.from(s);
+}
+
+
+function readerTokenizeParagraph(p, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  if (l === 'zh') return readerTokenizeChineseParagraph(p);
   // Keeps words clickable while preserving punctuation/spaces.
-  return String(p || '').match(/[A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+(?:[’'][A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+)?|\s+|[^\sA-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+/g) || [];
+  // Supports French forms like n'essaierais-tu, qu'avec, s'arrêta.
+  const word = `[A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+(?:[’'][A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+)*(?:-[A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+(?:[’'][A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+)*)*`;
+  return String(p || '').match(new RegExp(`${word}|\\s+|[^\\sA-Za-zÀ-ÖØ-öø-ÿŒœÆæ’'-]+|[’'-]`, 'g')) || [];
 }
 
 function readerSplitIntoSentences(text) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (!clean) return [];
-  const parts = clean.match(/[^.!?…]+[.!?…»”"]*|[^.!?…]+$/g) || [clean];
-  return parts.map(s => s.trim()).filter(Boolean);
+  const parts = clean.match(/[^.!?…。！？]+[.!?…。！？»”"]*|[^.!?…。！？]+$/g) || [clean];
+  return parts.map(x => x.trim()).filter(Boolean);
 }
 
 function readerChunkLongParagraph(paragraph, maxLen = 380) {
@@ -1043,22 +1836,35 @@ function readerNormalizeBookChunks(book) {
   return changed;
 }
 
-function readerSentenceContext(paragraphText, word) {
-  const norm = readerNormalizeWord(word);
+function readerSentenceContext(paragraphText, word, lang = null) {
+  const l = readerCanonicalLang(lang || readerCurrentLang());
+  const norm = readerNormalizeWord(word, l);
   const sentences = readerSplitIntoSentences(paragraphText);
   if (!sentences.length) return String(paragraphText || '').trim();
-  const found = sentences.find(s => readerNormalizeWord(s).split(/[^a-zàâçéèêëîïôùûüÿœæ'-]+/i).includes(norm)
-    || readerNormalizeWord(s).includes(norm));
+  const found = l === 'zh'
+    ? sentences.find(sent => String(sent || '').includes(norm))
+    : sentences.find(sent => readerNormalizeWord(sent, l).split(/[^a-zàâçéèêëîïôùûüÿœæ'-]+/i).includes(norm)
+      || readerNormalizeWord(sent, l).includes(norm));
   return (found || sentences[0] || paragraphText || '').trim();
 }
 
 function readerRenderParagraphText(p, paragraphIndex) {
-  return readerTokenizeParagraph(p).map(tok => {
+  const book = readerCurrentBook?.();
+  const lang = readerBookLang(book);
+  return readerTokenizeParagraph(p, lang).map(tok => {
     if (/^\s+$/.test(tok)) return tok;
-    const clean = readerNormalizeWord(tok);
-    if (!clean || !/[a-zàâçéèêëîïôùûüÿœæ]/i.test(clean)) return readerEscape(tok);
-    const visual = readerWordVisual(clean);
-    return `<span class="reader-word ${visual.cls}" data-word="${readerEscape(clean)}" title="${readerEscape(visual.title)}" onclick="event.stopPropagation();readerOpenWordPanel('${readerEscape(clean)}',${paragraphIndex})">${readerEscape(tok)}</span>`;
+    const clean = readerNormalizeWord(tok, lang);
+    const clickable = lang === 'zh'
+      ? !!clean && /[\u3400-\u9FFF]/.test(clean)
+      : !!clean && /[a-zàâçéèêëîïôùûüÿœæ]/i.test(clean);
+    if (!clickable) return readerEscape(tok);
+    const visual = readerWordVisual(clean, lang);
+    const pinyin = readerInlinePinyinForWord(clean, lang);
+    const pinyinCls = pinyin ? ' rw-pinyin-on' : '';
+    const body = pinyin
+      ? `<ruby class="reader-zh-ruby"><span class="reader-zh-hanzi">${readerEscape(tok)}</span><rt>${readerEscape(pinyin)}</rt></ruby>`
+      : readerEscape(tok);
+    return `<span class="reader-word ${visual.cls}${pinyinCls}" data-word="${readerEscape(clean)}" data-reader-index="${paragraphIndex}" data-lang="${readerEscape(lang)}" title="${readerEscape(visual.title)}">${body}</span>`;
   }).join('');
 }
 
@@ -1089,15 +1895,21 @@ function readerFindKnownNoun(word) {
 
 function loadReaderBooks() {
   try {
-    const raw = localStorage.getItem(READER_BOOKS_KEY);
+    const raw = localStorage.getItem(readerBooksStorageKey());
     readerBooks = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(readerBooks)) readerBooks = [];
+    const deduped = readerDedupeBooks(readerBooks);
+    if (deduped.length !== readerBooks.length) localStorage.setItem(readerBooksStorageKey(), JSON.stringify(deduped));
+    readerBooks = deduped;
   } catch { readerBooks = []; }
   return readerBooks;
 }
 
 function saveReaderBooks() {
-  try { localStorage.setItem(READER_BOOKS_KEY, JSON.stringify(readerBooks)); }
+  try {
+    readerBooks = readerDedupeBooks(readerBooks);
+    localStorage.setItem(readerBooksStorageKey(), JSON.stringify(readerBooks));
+  }
   catch(e) { console.warn('[reader] save failed', e); }
   scheduleReaderCloudSave();
 }
@@ -1122,9 +1934,10 @@ async function loadReaderBooksFromCloud(force = false) {
       const local = byId.get(rb.id);
       if (!local || new Date(rb.updatedAt || rb.updated_at || 0) > new Date(local.updatedAt || 0)) byId.set(rb.id, rb);
     }
-    readerBooks = [...byId.values()].sort((a,b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
-    localStorage.setItem(READER_BOOKS_KEY, JSON.stringify(readerBooks));
+    readerBooks = readerDedupeBooks([...byId.values()]);
+    localStorage.setItem(readerBooksStorageKey(), JSON.stringify(readerBooks));
     readerCloudLoadedOnce = true;
+    if (readerBooks.length !== byId.size) setTimeout(() => saveReaderBooksToCloud({ replaceAll: true }).catch(e => console.warn('[reader cloud] duplicate cleanup skipped:', e?.message || e)), 0);
     return true;
   } catch(e) {
     readerCloudLoadedOnce = true;
@@ -1138,19 +1951,30 @@ function scheduleReaderCloudSave() {
   readerCloudSaveTimer = setTimeout(() => saveReaderBooksToCloud().catch(e => console.warn('[reader cloud] save skipped:', e?.message || e)), 1200);
 }
 
-async function saveReaderBooksToCloud() {
+async function saveReaderBooksToCloud(options = {}) {
   const userId = readerCloudUserId();
   if (!userId || !isSupabaseReady?.() || readerCloudSaving) return false;
-  if (!Array.isArray(readerBooks) || !readerBooks.length) return false;
+  readerBooks = readerDedupeBooks(readerBooks);
+  if (!Array.isArray(readerBooks) || !readerBooks.length) {
+    if (options.replaceAll) await sb.from('reader_books').delete().eq('user_id', userId);
+    return false;
+  }
   readerCloudSaving = true;
   try {
-    const rows = readerBooks.map(b => ({
-      id: b.id,
-      user_id: userId,
-      title: b.title || 'Без названия',
-      updated_at: b.updatedAt || new Date().toISOString(),
-      data: b
-    }));
+    if (options.replaceAll) {
+      try { await sb.from('reader_books').delete().eq('user_id', userId); }
+      catch(e) { console.warn('[reader cloud] replaceAll delete skipped:', e?.message || e); }
+    }
+    const rows = readerBooks.map(b => {
+      const book = { ...b, importKey: readerBookImportKey(b), updatedAt: b.updatedAt || new Date().toISOString() };
+      return {
+        id: book.id,
+        user_id: userId,
+        title: book.title || 'Без названия',
+        updated_at: book.updatedAt,
+        data: book
+      };
+    });
     const { error } = await sb.from('reader_books').upsert(rows, { onConflict: 'id' });
     if (error) throw error;
     return true;
@@ -1240,7 +2064,7 @@ async function renderReaderScreen() {
           <div class="reader-book-card-main">
             <div style="font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:5px">продолжить</div>
             <div style="font-family:'Playfair Display',serif;font-size:1.22rem;font-weight:600;margin-bottom:2px">${readerEscape(recent.title)}</div>
-            <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:9px">${readerEscape(recent.author || recent.level || 'текст')}</div>
+            <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:9px">${readerEscape(readerLangBadge(readerBookLang(recent)))} · ${readerEscape(recent.author || recent.level || 'текст')}</div>
             <div style="height:5px;background:var(--surface2);border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--accent)"></div></div>
             <div style="font-size:.68rem;color:var(--text-dim);margin-top:5px">${pct}% прочитано</div>
           </div>
@@ -1267,7 +2091,7 @@ async function renderReaderScreen() {
       <div class="reader-book-card">
         <div onclick="readerOpenBook('${book.id}')" class="reader-book-card-main">
           <div style="font-family:'Playfair Display',serif;font-size:1.14rem;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${readerEscape(book.title)}</div>
-          <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">${readerEscape(book.author || '')}${book.author ? ' · ' : ''}${readerEscape(book.level || 'без уровня')} · ${chapters} гл. · ${paragraphs} абз.</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:8px">${readerEscape(readerLangBadge(readerBookLang(book)))} · ${readerEscape(book.author || '')}${book.author ? ' · ' : ''}${readerEscape(book.level || 'без уровня')} · ${chapters} гл. · ${paragraphs} абз.</div>
           <div style="height:5px;background:var(--surface2);border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--accent)"></div></div>
           <div style="font-size:.68rem;color:var(--text-dim);margin-top:5px">${pct}%</div>
         </div>
@@ -1292,7 +2116,7 @@ function showReaderImportModal() {
           <div><label style="font-size:.74rem;color:var(--text-muted);display:block;margin-bottom:5px">Название</label><input id="reader-import-title" placeholder="Bel-Ami, chapitre 1" style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)"></div>
           <div><label style="font-size:.74rem;color:var(--text-muted);display:block;margin-bottom:5px">Автор / пометка</label><input id="reader-import-author" placeholder="Maupassant · A2" style="width:100%;box-sizing:border-box;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text)"></div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><select id="reader-import-level" class="select-control" style="min-width:90px"><option>A1</option><option selected>A2</option><option>B1</option><option>B2</option><option>original</option></select><input type="file" id="reader-import-file" accept=".txt,.md,.text,.epub" onchange="readerImportFromFile(event)" style="font-size:.78rem;color:var(--text-muted)"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><select id="reader-import-lang" class="select-control" style="min-width:120px"><option value="fr" selected>🇫🇷 Français</option><option value="zh">🇨🇳 中文</option></select><select id="reader-import-level" class="select-control" style="min-width:90px"><option>A1</option><option selected>A2</option><option>B1</option><option>B2</option><option>original</option></select><input type="file" id="reader-import-file" accept=".txt,.md,.text,.epub" onchange="readerImportFromFile(event)" style="font-size:.78rem;color:var(--text-muted)"></div>
         <textarea id="reader-import-text" rows="14" placeholder="Вставь сюда главу или текст. Пустая строка = новый абзац." style="width:100%;box-sizing:border-box;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:.94rem;line-height:1.55;resize:vertical;margin-bottom:12px"></textarea>
         <div id="reader-import-status" style="display:none;font-size:.8rem;padding:8px;border-radius:8px;background:var(--surface2);margin-bottom:10px"></div>
         <div style="display:flex;gap:8px"><button onclick="closeReaderImportModal()" class="btn btn-secondary" style="flex:1">Отмена</button><button onclick="saveReaderImport()" class="btn btn-primary" style="flex:1">Сохранить</button></div>
@@ -1392,17 +2216,123 @@ function readerResolveEpubPath(base, href) {
   return out.join('/');
 }
 
-function readerHtmlToParagraphs(html) {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  doc.querySelectorAll('script,style,nav,header,footer,svg').forEach(x => x.remove());
-  const nodes = [...doc.querySelectorAll('h1,h2,h3,p,li,blockquote')];
-  let paragraphs = nodes.map(n => (n.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (!paragraphs.length) {
-    const body = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
-    paragraphs = readerChunkLongParagraph(body, 420);
+function readerEpubCleanText(text) {
+  return String(text || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function readerLooksLikeBoilerplate(text) {
+  const t = String(text || '').trim().toLowerCase();
+  if (!t) return true;
+  if (t.length <= 2) return true;
+  if (/^(contents?|table of contents|目录|目錄|版权|版權|封面|cover|nav|toc)$/i.test(t)) return true;
+  return false;
+}
+
+function readerHtmlToPlainTextFallback(html = '') {
+  return readerEpubCleanText(String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/(p|div|section|article|li|h[1-6]|blockquote|pre|tr|td|th)>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'"));
+}
+
+
+function readerHtmlToParagraphs(html, lang = null) {
+  const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  doc.querySelectorAll('script,style,nav,header,footer,svg,iframe,object,form,noscript').forEach(x => x.remove());
+  doc.querySelectorAll('br').forEach(br => br.replaceWith(doc.createTextNode('\n')));
+
+  const blockSelector = 'h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,div,section,article,main,td,th,dd,dt';
+  const hardTags = new Set('h1,h2,h3,h4,h5,h6,p,li,blockquote,pre'.split(','));
+  const nodes = [...doc.body?.querySelectorAll(blockSelector) || []];
+  const paragraphs = [];
+  const seen = new Set();
+
+  const pushParagraph = (raw) => {
+    const clean = readerEpubCleanText(raw);
+    if (!clean || readerLooksLikeBoilerplate(clean)) return;
+    const key = clean.slice(0, 180);
+    if (seen.has(key)) return;
+    seen.add(key);
+    const parts = clean.split(/\n\s*\n+/).map(x => readerEpubCleanText(x)).filter(Boolean);
+    for (const part of (parts.length ? parts : [clean])) {
+      readerChunkLongParagraph(part.replace(/\n+/g, ' '), readerCanonicalLang(lang) === 'zh' ? 420 : 420).forEach(p => {
+        if (p && !readerLooksLikeBoilerplate(p)) paragraphs.push(p);
+      });
+    }
+  };
+
+  nodes.forEach(node => {
+    const tag = node.tagName?.toLowerCase() || '';
+    const text = node.textContent || '';
+    if (!text.trim()) return;
+    const childBlocks = [...node.querySelectorAll(blockSelector)].filter(ch => ch !== node && (ch.textContent || '').trim().length > 12);
+    const isHard = hardTags.has(tag);
+    // Chinese EPUBs often store chapter text in leaf divs instead of <p>.
+    // Use leaf-like div/section/article only to avoid duplicating whole parent chapters.
+    if (!isHard && childBlocks.length) return;
+    pushParagraph(text);
+  });
+
+  const bodyText = readerEpubCleanText(doc.body?.textContent || '').replace(/\n+/g, '\n');
+  const plainText = readerHtmlToPlainTextFallback(html).replace(/\n{3,}/g, '\n\n');
+  const bestText = plainText.replace(/\s+/g, '').length > bodyText.replace(/\s+/g, '').length ? plainText : bodyText;
+  const bodyChars = bestText.replace(/\s+/g, '').length;
+  const paraChars = paragraphs.join('').replace(/\s+/g, '').length;
+  if (bodyChars > 0 && (paragraphs.length === 0 || paraChars < bodyChars * 0.82)) {
+    const fallback = [];
+    bestText.split(/\n\s*\n+|\n+/).map(x => readerEpubCleanText(x)).filter(x => x && !readerLooksLikeBoilerplate(x)).forEach(part => {
+      readerChunkLongParagraph(part, readerCanonicalLang(lang) === 'zh' ? 420 : 420).forEach(p => fallback.push(p));
+    });
+    if (fallback.join('').replace(/\s+/g, '').length > paraChars) return fallback.filter(p => p.length > 1);
   }
   return paragraphs.filter(p => p.length > 1);
 }
+
+function readerParseAttrs(tag = '') {
+  const attrs = {};
+  String(tag || '').replace(/([:\w-]+)\s*=\s*(["'])(.*?)\2/g, (_, k, _q, v) => { attrs[k] = v; return ''; });
+  return attrs;
+}
+
+function readerExtractEpubManifestAndSpine(opfText, base) {
+  const manifest = {};
+  const spine = [];
+  const addItem = (id, href, media = '') => {
+    if (!id || !href) return;
+    if (/xhtml|html|xml/i.test(media) || /\.(xhtml|html|htm)$/i.test(href)) manifest[id] = readerResolveEpubPath(base, href);
+  };
+  try {
+    const xml = new DOMParser().parseFromString(opfText, 'application/xml');
+    xml.querySelectorAll('manifest item').forEach(item => addItem(item.getAttribute('id'), item.getAttribute('href'), item.getAttribute('media-type') || ''));
+    xml.querySelectorAll('spine itemref').forEach(ref => { const p = manifest[ref.getAttribute('idref')]; if (p) spine.push(p); });
+  } catch {}
+  if (!Object.keys(manifest).length) {
+    for (const m of String(opfText || '').matchAll(/<item\b[^>]*>/gi)) {
+      const a = readerParseAttrs(m[0]);
+      addItem(a.id, a.href, a['media-type'] || '');
+    }
+    for (const m of String(opfText || '').matchAll(/<itemref\b[^>]*>/gi)) {
+      const a = readerParseAttrs(m[0]);
+      const p = manifest[a.idref]; if (p) spine.push(p);
+    }
+  }
+  const allHtml = Object.values(manifest).filter(Boolean);
+  return { manifest, spine: spine.length ? spine : allHtml, allHtml };
+}
+
 
 function readerExtractEpubMeta(opfText, fallbackTitle) {
   const get = (tag) => {
@@ -1433,32 +2363,34 @@ async function readerImportEpubFromFile(file) {
   const base = opfPath.split('/').slice(0, -1).join('/');
   const meta = readerExtractEpubMeta(opf, file.name.replace(/\.epub$/i, ''));
 
-  const itemRe = /<item\b[^>]*id=["']([^"']+)["'][^>]*href=["']([^"']+)["'][^>]*(?:media-type=["']([^"']+)["'])?[^>]*>/gi;
-  const manifest = {};
-  let m;
-  while ((m = itemRe.exec(opf))) {
-    const id = m[1], href = m[2], media = m[3] || '';
-    if (/xhtml|html|xml/i.test(media) || /\.(xhtml|html|htm)$/i.test(href)) manifest[id] = readerResolveEpubPath(base, href);
+  const { spine, allHtml } = readerExtractEpubManifestAndSpine(opf, base);
+  const seenPaths = new Set();
+  let htmlPaths = spine.filter(p => entries.has(p) && !/\b(nav|toc|cover)\b/i.test(p) && !seenPaths.has(p) && seenPaths.add(p));
+  // Some Chinese EPUBs hide real chapter files outside the spine or have a broken OPF.
+  // Add remaining HTML files as a safety net; tiny/nav files are later ignored by text length.
+  for (const p of allHtml) {
+    if (entries.has(p) && !seenPaths.has(p) && !/\b(nav|toc|cover)\b/i.test(p)) { seenPaths.add(p); htmlPaths.push(p); }
   }
-  const spine = [];
-  const spineRe = /<itemref\b[^>]*idref=["']([^"']+)["'][^>]*>/gi;
-  while ((m = spineRe.exec(opf))) if (manifest[m[1]]) spine.push(manifest[m[1]]);
-
-  let htmlPaths = spine.filter(p => entries.has(p));
-  if (!htmlPaths.length) htmlPaths = [...entries.keys()].filter(n => /\.(xhtml|html|htm)$/i.test(n)).sort();
+  if (!htmlPaths.length) htmlPaths = [...entries.keys()].filter(n => /\.(xhtml|html|htm)$/i.test(n) && !/\b(nav|toc|cover)\b/i.test(n)).sort();
 
   const chapters = [];
+  const importLang = readerCanonicalLang(document.getElementById('reader-import-lang')?.value || 'fr');
+  let importChars = 0;
+  const diagnostics = [];
   for (let i = 0; i < htmlPaths.length; i++) {
     const p = htmlPaths[i];
     try {
       const html = await entries.get(p).text();
-      const paragraphs = readerHtmlToParagraphs(html).flatMap(x => readerChunkLongParagraph(x, 420));
-      if (paragraphs.length) {
+      const paragraphs = readerHtmlToParagraphs(html, importLang);
+      const chars = paragraphs.join('').replace(/\s+/g, '').length;
+      diagnostics.push(`${p}: ${chars} зн.`);
+      if (paragraphs.length && chars > 20) {
+        importChars += chars;
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const h = (doc.querySelector('h1,h2,h3,title')?.textContent || '').replace(/\s+/g, ' ').trim();
         chapters.push({ id: 'ch_' + chapters.length, title: h || `Глава ${chapters.length + 1}`, paragraphs });
       }
-    } catch(e) { console.warn('[epub] skipped', p, e); }
+    } catch(e) { console.warn('[epub] skipped', p, e); diagnostics.push(`${p}: ошибка ${e?.message || e}`); }
   }
   if (!chapters.length) throw new Error('Не получилось извлечь текст из EPUB.');
 
@@ -1473,7 +2405,7 @@ async function readerImportEpubFromFile(file) {
     textEl.value = chapters.slice(0, 5).map(ch => `${ch.title}\n\n${ch.paragraphs.slice(0, 4).join('\n\n')}`).join('\n\n---\n\n');
     textEl.placeholder = 'EPUB загружен. Это предпросмотр, при сохранении будут использованы главы из EPUB.';
   }
-  if (st) { st.style.display = 'block'; st.style.color = 'var(--good)'; st.textContent = `✅ EPUB загружен: ${chapters.length} глав. Нажми «Сохранить».`; }
+  if (st) { st.style.display = 'block'; st.style.color = 'var(--good)'; st.textContent = `✅ EPUB загружен: ${chapters.length} глав · ${chapters.reduce((n,ch)=>n+(ch.paragraphs?.length||0),0)} абз. · ${importChars} зн. Нажми «Сохранить».`; st.title = diagnostics.slice(0, 80).join('\n'); }
 }
 
 async function readerImportFromFile(event) {
@@ -1504,6 +2436,7 @@ function saveReaderImport() {
   loadReaderBooks();
   const title = document.getElementById('reader-import-title')?.value.trim() || 'Без названия';
   const authorRaw = document.getElementById('reader-import-author')?.value.trim() || '';
+  const lang = readerCanonicalLang(document.getElementById('reader-import-lang')?.value || 'fr');
   const level = document.getElementById('reader-import-level')?.value || 'A2';
   const raw = document.getElementById('reader-import-text')?.value || '';
   const st = document.getElementById('reader-import-status');
@@ -1512,7 +2445,14 @@ function saveReaderImport() {
     : readerSplitTextToChapters(raw, title);
   if (!chapters.length) { if (st) { st.style.display = 'block'; st.style.color = 'var(--bad)'; st.textContent = 'Текст пустой или не получилось разбить на абзацы.'; } return; }
   const now = new Date().toISOString();
-  const book = { id: readerId(), title, author: authorRaw, level, source: readerPendingImportSource || 'manual_text', createdAt: now, updatedAt: now, currentChapter: 0, currentParagraph: 0, chapters };
+  const book = { id: readerId(), title, author: authorRaw, level, lang, sourceLang: lang, source: readerPendingImportSource || 'manual_text', createdAt: now, updatedAt: now, currentChapter: 0, currentParagraph: 0, chapters };
+  book.importKey = readerBookImportKey(book);
+  const __dupe = (readerBooks || []).find(b => readerBookImportKey(b) === book.importKey);
+  if (__dupe) {
+    showToast('📚 Такой текст уже есть — открываю существующий');
+    readerPendingImportChapters = null; readerPendingImportSource = 'manual_text';
+    closeReaderImportModal(); renderReaderScreen(); readerOpenBook(__dupe.id); return;
+  }
   readerPendingImportChapters = null; readerPendingImportSource = 'manual_text';
   readerBooks.unshift(book);
   saveReaderBooks(); closeReaderImportModal(); showToast('📖 Текст добавлен'); renderReaderScreen(); readerOpenBook(book.id);
@@ -1528,13 +2468,20 @@ function readerOpenBook(id) {
     book.updatedAt = new Date().toISOString();
     saveReaderBooks();
   }
+  // v66: immersive reading handled by fixed #reader-reading-view layout (no old reader-mode chrome hacks)
   document.getElementById('reader-library-view').style.display = 'none';
-  document.getElementById('reader-reading-view').style.display = 'block';
+  document.getElementById('reader-reading-view').style.display = 'flex';
   renderReaderChapter();
+  readerScrollActiveParagraph();
+  installReaderSelectionTranslate();
+  readerStartWarm();
 }
 
 function readerBackToLibrary() {
   readerStopSpeech();
+  readerStopWarm();
+  readerHideSelectionUI();
+  document.body.classList.remove('reader-mode');
   document.getElementById('reader-reading-view').style.display = 'none';
   document.getElementById('reader-library-view').style.display = 'block';
   readerCurrentBookId = null;
@@ -1543,6 +2490,10 @@ function readerBackToLibrary() {
 
 function renderReaderChapter() {
   const book = readerCurrentBook(); if (!book) return;
+  const activeReaderLang = readerBookLang(book);
+  if (readerCanonicalLang(activeReaderLang) === 'zh' && !readerZhCoreJson && !readerZhCoreJsonPromise) readerEnsureZhCoreJsonLoaded({ rerender: true });
+  const readingView = document.getElementById('reader-reading-view');
+  if (readingView) readingView.dataset.readerLang = activeReaderLang;
   const ci = Math.max(0, Math.min(book.currentChapter || 0, (book.chapters || []).length - 1));
   book.currentChapter = ci;
   const ch = book.chapters[ci];
@@ -1557,13 +2508,19 @@ function renderReaderChapter() {
   const pt = document.getElementById('reader-progress-text');
   const text = document.getElementById('reader-chapter-text');
   if (titleEl) titleEl.textContent = book.title || 'Текст';
-  if (chTitleEl) chTitleEl.textContent = `${ch?.title || 'Глава'} · ${ci + 1} / ${(book.chapters || []).length}`;
+  if (chTitleEl) chTitleEl.textContent = `${readerLangBadge(activeReaderLang)} · ${ch?.title || 'Глава'} · гл. ${ci + 1}/${(book.chapters || []).length} · абзац ${pi + 1}/${Math.max(1, paragraphs.length)}`;
   if (bar) bar.style.width = pct + '%';
   if (pt) pt.textContent = `${pct}% · абзац ${pi + 1} / ${Math.max(1, paragraphs.length)}`;
   const comp = book.comprehension?.[ch.id];
   const note = document.getElementById('reader-comprehension-note');
   if (note) note.textContent = comp ? `Оценка понятности: ${comp}/5` : 'Оцени после чтения: это поможет выбирать уровень дальше.';
+  const helpBtn = document.getElementById('reader-help-btn');
+  if (helpBtn) helpBtn.classList.toggle('on', !readerTranslationsHidden);
+  readerUpdatePinyinButton(activeReaderLang);
   if (text) {
+    text.dataset.lang = activeReaderLang;
+    const __sc = document.querySelector('#reader-reading-view .rd-scroll');
+    const __top = __sc ? __sc.scrollTop : 0;
     const translations = book.readerTranslations || {};
     text.innerHTML = paragraphs.map((p, i) => {
       const trKey = `${ch.id}:${i}`;
@@ -1571,26 +2528,70 @@ function renderReaderChapter() {
       return `
       <div class="reader-paragraph ${i===pi?'active':''}" data-p="${i}">
         <div class="reader-paragraph-text">${readerRenderParagraphText(p, i)}</div>
-        ${tr && !readerTranslationsHidden ? renderReaderTranslationBlock(tr) : ''}
-        ${book.readerAnalyses?.[trKey] && !readerTranslationsHidden ? renderReaderAnalysisBlock(book.readerAnalyses[trKey]) : ''}
-        ${i===pi ? `<div class="reader-paragraph-actions" data-reader-actions="1">
-          <button type="button" class="reader-action-btn" data-reader-action="speak" data-reader-index="${i}">🔊</button>
-          <button type="button" class="reader-action-btn" data-reader-action="translate" data-reader-index="${i}">🌐 перевод</button>
-          <button type="button" class="reader-action-btn" data-reader-action="analyze" data-reader-index="${i}">🧩 разобрать</button>
-          <button type="button" class="reader-action-btn reader-toggle-translations-btn" data-reader-action="toggleHelp" data-reader-index="${i}">${readerTranslationsHidden ? '👁️ показать помощь' : '🙈 скрыть помощь'}</button>
-          <button type="button" class="reader-action-btn" data-reader-action="phrase" data-reader-index="${i}">＋ фраза</button>
-        </div>` : ''}
+        ${i===pi && tr && !readerTranslationsHidden ? renderReaderTranslationBlock(tr) : ''}
+        ${i===pi && book.readerAnalyses?.[trKey] && !readerTranslationsHidden ? renderReaderAnalysisBlock(book.readerAnalyses[trKey]) : ''}
+
       </div>`;
     }).join('');
     bindReaderParagraphEvents();
+    if (__sc) __sc.scrollTop = __top;
   }
   saveReaderBooks();
+  readerSchedulePrefetch();
 }
 
 
+
+function bindReaderSwipe() {
+  const root = document.getElementById('reader-chapter-text');
+  if (!root || root.dataset.boundReaderSwipe === '1') return;
+  root.dataset.boundReaderSwipe = '1';
+  let sx = 0, sy = 0, st = 0;
+  root.addEventListener('touchstart', (e) => {
+    const t = e.touches?.[0];
+    if (!t) return;
+    sx = t.clientX; sy = t.clientY; st = Date.now();
+  }, { passive: true });
+  root.addEventListener('touchend', (e) => {
+    if (window.__readerRanging) return;
+    const t = e.changedTouches?.[0];
+    if (!t) return;
+    const dx = t.clientX - sx;
+    const dy = t.clientY - sy;
+    if (Date.now() - st > 600) return;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.7) {
+      if (dx < 0) readerNextParagraph();
+      else readerPrevParagraph();
+    }
+  }, { passive: true });
+}
+
 function bindReaderParagraphEvents() {
+  bindReaderSwipe();
   const root = document.getElementById('reader-chapter-text');
   if (!root) return;
+
+  root.querySelectorAll('.reader-word').forEach(w => {
+    if (w.dataset.boundReaderWord === '1') return;
+    w.dataset.boundReaderWord = '1';
+    w.addEventListener('click', (e) => {
+      if (window.__readerSuppressWordTap) { window.__readerSuppressWordTap = false; e.preventDefault(); e.stopPropagation(); return; }
+      if (readerHasNativeSelectionInReader()) {
+        readerScheduleSelUpdate();
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        return false;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      const word = w.dataset.word || w.textContent || '';
+      const index = Number(w.dataset.readerIndex);
+      readerOpenWordPanel(word, Number.isFinite(index) ? index : (readerCurrentBook()?.currentParagraph || 0));
+      return false;
+    }, { capture: true });
+  });
 
   root.querySelectorAll('.reader-action-btn').forEach(btn => {
     if (btn.dataset.boundReaderAction === '1') return;
@@ -1612,7 +2613,9 @@ function bindReaderParagraphEvents() {
     p.addEventListener('click', (e) => {
       if (e.target?.closest?.('.reader-action-btn, .reader-word, details, summary, button, input, textarea, select, a')) return;
       const idx = Number(p.dataset.p);
-      if (Number.isFinite(idx)) readerSelectParagraph(idx);
+      if (!Number.isFinite(idx)) return;
+      // Android reader behavior: tap paragraph = select it, but no heavy visual block.
+      readerSelectParagraph(idx);
     });
   });
 }
@@ -1626,7 +2629,9 @@ function readerAction(event, action, index = null) {
   } catch {}
 
   const book = readerCurrentBook?.();
-  const safeIndex = Number.isFinite(Number(index)) ? Number(index) : (book?.currentParagraph || 0);
+  const safeIndex = (index === null || index === undefined || index === '' || !Number.isFinite(Number(index)))
+    ? (book?.currentParagraph || 0)
+    : Number(index);
 
   const run = () => {
     if (action === 'speak') return readerSpeakParagraph(safeIndex);
@@ -1719,38 +2724,49 @@ function readerCurrentParagraphText(index = null) {
   return ch?.paragraphs?.[i] || '';
 }
 
-function readerPickFrenchVoice() {
+function readerPickVoice(lang = 'fr') {
+  const meta = readerLangMeta(lang);
+  const prefix = meta.speech.split('-')[0];
   const voices = window.speechSynthesis?.getVoices?.() || [];
-  return voices.find(v => v.lang === 'fr-FR' && v.localService) || voices.find(v => v.lang === 'fr-FR') || voices.find(v => /^fr[-_]/i.test(v.lang)) || voices.find(v => /^fr/i.test(v.lang)) || null;
+  return voices.find(v => v.lang === meta.speech && v.localService)
+    || voices.find(v => v.lang === meta.speech)
+    || voices.find(v => new RegExp('^' + prefix + '[-_]', 'i').test(v.lang))
+    || voices.find(v => new RegExp('^' + prefix, 'i').test(v.lang))
+    || null;
+}
+
+function readerPickFrenchVoice() {
+  return readerPickVoice('fr');
 }
 
 function readerSpeakText(text, opts = {}) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (!clean) return;
   const chunk = clean.length > 900 ? clean.slice(0, 900) : clean;
+  const lang = readerCanonicalLang(opts.lang || readerCurrentLang());
+  const meta = readerLangMeta(lang);
 
-  // For reader we intentionally speak shorter sentence chunks.
-  // First try the app-wide TTS pipeline (it already knows the selected engine),
-  // then local browser speech as a fallback.
-  try {
-    readerStopSpeech(false);
-    speak(chunk);
-    readerSpeechActive = true;
-    setTimeout(() => { readerSpeechActive = false; }, Math.max(1800, Math.min(9000, chunk.length * 70)));
-    return;
-  } catch(e) {
-    console.warn('[reader tts] app speak failed:', e);
+  if (lang === 'fr') {
+    try {
+      readerStopSpeech(false);
+      speak(chunk);
+      readerSpeechActive = true;
+      setTimeout(() => { readerSpeechActive = false; }, Math.max(1800, Math.min(9000, chunk.length * 70)));
+      return;
+    } catch(e) {
+      console.warn('[reader tts] app speak failed:', e);
+    }
   }
 
   try {
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(chunk);
-      u.lang = 'fr-FR'; u.rate = opts.rate || 0.88; u.pitch = 1;
-      const v = readerPickFrenchVoice(); if (v) u.voice = v;
+      u.lang = meta.speech; u.rate = opts.rate || (lang === 'zh' ? 0.92 : 0.88); u.pitch = 1;
+      const v = readerPickVoice(lang); if (v) u.voice = v;
       u.onstart = () => { readerSpeechActive = true; };
       u.onend = () => { readerSpeechActive = false; };
-      u.onerror = () => { readerSpeechActive = false; showToast('⚠️ Озвучка не сработала: проверь французский голос в системе'); };
+      u.onerror = () => { readerSpeechActive = false; showToast(`⚠️ Озвучка не сработала: проверь голос ${meta.speech} в системе`); };
       window.speechSynthesis.speak(u);
       setTimeout(() => { try { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); } catch {} }, 250);
       return;
@@ -1798,7 +2814,14 @@ function readerDeleteBook(id) {
   loadReaderBooks();
   const book = readerBooks.find(b => b.id === id); if (!book) return;
   if (!confirm(`Удалить текст «${book.title}»?`)) return;
-  readerBooks = readerBooks.filter(b => b.id !== id); saveReaderBooks(); showToast('🗑 Текст удалён'); renderReaderScreen();
+  readerBooks = readerBooks.filter(b => b.id !== id);
+  saveReaderBooks();
+  const userId = readerCloudUserId();
+  if (userId && isSupabaseReady?.()) {
+    sb.from('reader_books').delete().eq('user_id', userId).eq('id', id)
+      .catch(e => console.warn('[reader cloud] delete skipped:', e?.message || e));
+  }
+  showToast('🗑 Текст удалён'); renderReaderScreen();
 }
 function readerSetComprehension(score) {
   const book = readerCurrentBook(); if (!book) return;
@@ -1850,6 +2873,7 @@ function ensureReaderWordPanel() {
       <button onclick="readerSpeakSelectedContext()" class="btn btn-secondary">🔊 контекст</button>
       <button onclick="readerTranslateWordAI(true)" class="btn btn-secondary">↻ DeepSeek</button>
       <button id="reader-word-save-btn" onclick="readerSaveWord()" class="btn btn-primary">＋ Сохранить</button>
+      <button onclick="readerMarkSelectedWordProblem()" class="btn btn-secondary">⚠ проблема</button>
       <button onclick="readerSendParagraphToPhrase(readerSelectedParagraphIndex)" class="btn btn-secondary">＋ фраза</button>
       <button onclick="readerMarkSelectedWordKnown()" class="btn btn-secondary">✓ знаю</button>
     </div>`;
@@ -1873,8 +2897,14 @@ function readerPosRu(pos) {
   const p = readerSimplifyPos(pos);
   return {
     noun: 'существительное', verb: 'глагол', adjective: 'прилагательное',
-    adverb: 'наречие', preposition: 'предлог', pronoun: 'местоимение', other: 'другое'
+    adverb: 'наречие', preposition: 'предлог', pronoun: 'местоимение',
+    particle: 'частица', measure_word: 'счётное слово', classifier: 'счётное слово',
+    proper_noun: 'имя собственное', name: 'имя собственное', other: 'другое'
   }[p] || 'другое';
+}
+
+function readerHasRussianMeaning(data = {}) {
+  return !!String(data?.ru || data?.translation_ru || data?.russian || data?.meaning_ru || '').trim();
 }
 
 function readerSetPanelFields(data = {}) {
@@ -1909,6 +2939,10 @@ function readerRenderWordAnalysis(data = {}, source = '') {
   const formInfo = data.form_note || data.form || data.tense || data.tense_hint || data.note || '';
   const person = data.person ? ` · ${data.person}` : '';
   const number = data.number ? ` · ${data.number}` : '';
+  const analysisLang = readerCanonicalLang(data.lang || readerCurrentLang());
+  const isZh = analysisLang === 'zh';
+  const pinyin = isZh ? (readerExtractPinyin(data) || String(data.form_note || '').trim()) : '';
+  const zhNote = isZh ? String(data.note || data.form_note || '').trim() : '';
 
   if (known) {
     known.textContent = source === 'local'
@@ -1917,9 +2951,23 @@ function readerRenderWordAnalysis(data = {}, source = '') {
         ? 'разобрано через DeepSeek'
         : 'готово';
   }
-  if (saveBtn) saveBtn.textContent = isVerb ? '＋ Добавить глагол' : '＋ В словарь';
+  if (saveBtn) saveBtn.textContent = isZh ? '＋ В китайский словарь' : (isVerb ? '＋ Добавить глагол' : '＋ В словарь');
 
   if (!box) return;
+  if (isZh) {
+    const typeLabel = readerPosRu(pos);
+    const lemmaLine = lemma && lemma !== form ? `<div class="reader-analysis-meta">словарная форма: ${readerEscape(lemma)}</div>` : '';
+    box.innerHTML = `
+      <div class="reader-analysis-card zh">
+        <div class="reader-analysis-kicker">${readerEscape(typeLabel)} · китайский</div>
+        <div class="reader-analysis-main zh-main"><b>${readerEscape(form)}</b></div>
+        ${pinyin ? `<div class="reader-analysis-pinyin">${readerEscape(pinyin)}</div>` : `<div class="reader-analysis-pinyin muted">пиньинь не пришёл — нажми ↻ DeepSeek</div>`}
+        <div class="reader-analysis-ru">${readerEscape(ru)}</div>
+        ${lemmaLine}
+        <div class="reader-analysis-meta">${readerEscape(level)}${zhNote && zhNote !== pinyin ? ' · ' + readerEscape(zhNote) : ''}</div>
+      </div>`;
+    return;
+  }
   if (isVerb) {
     box.innerHTML = `
       <div class="reader-analysis-card verb">
@@ -1960,8 +3008,17 @@ function readerRenderWordError(message) {
 }
 
 async function readerLookupWord(word) {
-  const norm = readerNormalizeWord(word);
+  const lang = readerCurrentLang();
+  const norm = readerNormalizeWord(word, lang);
   if (!norm) return null;
+  if (lang === 'zh') {
+    const zh = readerLookupChineseWord(norm);
+    // Локальный словарь/кэш быстрый. Если записи нет — добираем CC-CEDICT/lang_dictionary.
+    if (zh) return zh;
+    const remote = await readerFetchChineseDictEntry(norm);
+    if (remote) return remote;
+    return null;
+  }
   const quick = readerQuickLookup(norm);
   if (quick) return quick;
   const cached = readerGetCachedLexical(norm);
@@ -1990,10 +3047,13 @@ async function readerLookupWord(word) {
 }
 
 async function readerOpenWordPanel(word, paragraphIndex = 0) {
-  readerSelectedWord = readerNormalizeWord(word);
+  readerSelectedWord = readerNormalizeWord(word, readerCurrentLang());
   readerSelectedParagraphIndex = paragraphIndex;
-  readerMarkWordClicked(readerSelectedWord);
+  const activeLang = readerCurrentLang();
+  readerMarkWordClicked(readerSelectedWord, activeLang);
   const panel = ensureReaderWordPanel();
+  panel.dataset.lang = activeLang;
+  panel.classList.toggle('zh-word-panel', activeLang === 'zh');
   panel.classList.add('open');
 
   const title = panel.querySelector('#reader-word-title');
@@ -2007,7 +3067,7 @@ async function readerOpenWordPanel(word, paragraphIndex = 0) {
   const st = panel.querySelector('#reader-word-status');
 
   const paragraph = readerCurrentParagraphText(paragraphIndex);
-  const sentContext = readerSentenceContext(paragraph, readerSelectedWord);
+  const sentContext = readerSentenceContext(paragraph, readerSelectedWord, readerCurrentLang());
 
   if (title) title.textContent = readerSelectedWord;
   if (known) known.textContent = 'смотрю локально...';
@@ -2024,6 +3084,13 @@ async function readerOpenWordPanel(word, paragraphIndex = 0) {
     const found = await readerLookupWord(readerSelectedWord);
     if (found) {
       readerRenderWordAnalysis(found, 'local');
+      // CC-CEDICT/lang_dictionary может дать только pinyin/английскую gloss-запись.
+      // Если русского смысла нет — сразу добираем человеческое русское объяснение через DeepSeek.
+      const hasRu = readerHasRussianMeaning(found);
+      if (activeLang === 'zh' && !hasRu) {
+        await readerTranslateWordAI({ force: false, skipLocal: true });
+      }
+      if (activeLang === 'zh') setTimeout(() => { try { renderReaderChapter(); } catch {} }, 0);
       return;
     }
     await readerTranslateWordAI(false);
@@ -2055,11 +3122,28 @@ function readerSpeakSelectedContext() {
 function readerNormalizeVerbGroupValue(value, inf = '') {
   const v = String(value || '').toLowerCase().trim()
     .replace(/^[-\s]+/, '')
-    .replace(/\s+/g, '');
+    .replace(/\s+/g, '')
+    .replace(/groupe/g, '');
   const byInf = String(inf || '').toLowerCase().trim();
-  if (['er','1','1er','premier','premiergroupe','1ergroupe'].includes(v) || byInf.endsWith('er')) return 'er';
-  if (['ir','2','2e','deuxième','deuxieme','2egroupe','deuxièmegroupe','deuxiemegroupe'].includes(v) || byInf.endsWith('ir')) return 'ir';
-  if (['re','3','3e','troisième','troisieme','3egroupe'].includes(v) || byInf.endsWith('re')) return 're';
+
+  // French "groups" in this app: er / ir / re / irr.
+  // A lot of common -ir/-ire verbs are 3rd group, so suffix alone is not enough.
+  const irregular = new Set([
+    'être','avoir','aller','faire','dire','lire','écrire','ecrire','voir','savoir','pouvoir','vouloir','devoir',
+    'venir','tenir','prendre','comprendre','apprendre','mettre','permettre','sortir','partir','dormir','servir','sentir',
+    'ouvrir','offrir','courir','mourir','recevoir','boire','croire','vivre','suivre','naître','naitre','connaître','connaitre',
+    'plaire','rire','conduire','produire','traduire'
+  ]);
+  if (irregular.has(byInf)) return 'irr';
+
+  if (['er','1','1er','premier'].includes(v)) return 'er';
+  if (['ir','2','2e','deuxième','deuxieme'].includes(v)) return 'ir';
+  if (['re','3','3e','troisième','troisieme'].includes(v)) return 're';
+  if (['irr','irregulier','irrégulier','irregular','3egroupe'].includes(v)) return 'irr';
+
+  if (byInf.endsWith('er')) return 'er';
+  if (byInf.endsWith('re') || byInf.endsWith('ire')) return 're';
+  if (byInf.endsWith('ir')) return 'ir';
   return 'irr';
 }
 
@@ -2154,10 +3238,27 @@ function readerMarkSelectedWordKnown() {
   showToast('✓ Слово скрыто как изученное');
 }
 
+function readerMarkSelectedWordProblem() {
+  if (!readerSelectedWord) return;
+  const lang = readerCurrentLang();
+  const st = readerTouchWordState(readerSelectedWord, lang);
+  st.known = false;
+  st.saved = true;
+  st.status = 'problem';
+  st.updatedAt = new Date().toISOString();
+  saveReaderWordState();
+  readerCloseWordPanel();
+  renderReaderChapter();
+  showToast('⚠ Отмечено как проблемное');
+}
+
 async function readerSaveWord() {
   const panel = ensureReaderWordPanel();
   const rawWord = readerSelectedWord;
-  const lemma = panel.querySelector('#reader-word-lemma')?.value.trim().toLowerCase() || rawWord;
+  const activeLang = readerCurrentLang();
+  const lemma = activeLang === 'zh'
+    ? (panel.querySelector('#reader-word-lemma')?.value.trim() || rawWord)
+    : (panel.querySelector('#reader-word-lemma')?.value.trim().toLowerCase() || rawWord);
   const pos = panel.querySelector('#reader-word-pos')?.value || 'noun';
   const ru = panel.querySelector('#reader-word-ru')?.value.trim() || '';
   const gender = panel.querySelector('#reader-word-gender')?.value || '';
@@ -2168,6 +3269,21 @@ async function readerSaveWord() {
   try {
     if (!rawWord) throw new Error('Слово не выбрано');
     if (!ru) throw new Error('Введи перевод или нажми DeepSeek');
+    if (activeLang === 'zh') {
+      const cached = readerGetCachedLexical(rawWord, 'zh') || {};
+      readerPutCachedLexical(rawWord, {
+        ...cached,
+        lang: 'zh', word: rawWord, surface: rawWord, lemma, pos, ru, translation: ru,
+        gender: '', level,
+        pinyin: cached.pinyin || readerLookupChineseWord(rawWord)?.pinyin || '',
+        form_note: cached.form_note || cached.note || ''
+      }, 'zh');
+      readerMarkWordSaved(rawWord, lemma, 'zh');
+      if (st) { st.style.display = 'block'; st.style.color = 'var(--good)'; st.textContent = '✅ Добавлено в китайские изучаемые слова'; }
+      renderReaderChapter();
+      showToast('＋ Китайское слово отмечено как изучаемое');
+      return;
+    }
 
     if (pos === 'verb') {
       const known = VERBS.find(v => readerNormalizeWord(v.inf) === readerNormalizeWord(lemma));
@@ -2228,21 +3344,53 @@ async function readerReadApiResponse(res, label = 'DeepSeek') {
   return data.data || data;
 }
 
+function readerFunctionRegion() {
+  return String(globalThis.AN2_FIREBASE_FUNCTIONS_REGION || 'asia-southeast1').trim() || 'asia-southeast1';
+}
+
+function readerCallableWithTimeout(callable, payload, timeoutMs = LONG_REQUEST_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Firebase readerAI не ответила за ${Math.round(timeoutMs / 1000)} сек. Проверь сеть, регион функции и API-ключ.`));
+    }, timeoutMs);
+    Promise.resolve()
+      .then(() => callable(payload))
+      .then((result) => resolve(result))
+      .catch((error) => reject(error))
+      .finally(() => clearTimeout(timer));
+  });
+}
+
 async function readerAI(payload) {
-  // v48: send a SIMPLE request to avoid browser preflight CORS.
-  // No apikey / Authorization / application-json header here.
-  // The reader-ai Edge Function must be deployed with verify_jwt=false.
-  let res;
-  try {
-    res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/reader-ai`, {
-      method: 'POST',
-      // v49: no custom headers at all. This avoids CORS preflight even from origin:null.
-      body: JSON.stringify(payload)
-    }, LONG_REQUEST_TIMEOUT_MS);
-  } catch(e) {
-    throw new Error('reader-ai недоступна: Failed to fetch. Запрос сделан без preflight; если ошибка осталась — функция не public/no-verify-jwt, не развернута или домен Supabase недоступен.');
+  // v67: reader-ai переехал с Supabase Edge Function в Firebase Callable Function.
+  // Контракт с остальным приложением сохраняем прежним: на вход task/payload, на выход готовый JSON.
+  if (!globalThis.firebase?.app) {
+    throw new Error('Firebase SDK не загружен. Проверь index.html и доступ к gstatic/jsdelivr.');
   }
-  return await readerReadApiResponse(res, 'reader-ai');
+  if (!globalThis.firebase?.functions) {
+    throw new Error('Firebase Functions SDK не загружен. В index.html должен быть firebase-functions-compat.js.');
+  }
+
+  try { if (!isSupabaseReady()) initSupabase(); } catch {}
+
+  const task = String(payload?.task || '').trim();
+  if (!task) throw new Error('readerAI: пустой task.');
+
+  try {
+    const fn = globalThis.firebase.app().functions(readerFunctionRegion()).httpsCallable('readerAI');
+    const result = await readerCallableWithTimeout(fn, payload, LONG_REQUEST_TIMEOUT_MS);
+    return result?.data?.data || result?.data || {};
+  } catch (e) {
+    const code = e?.code ? `${e.code}: ` : '';
+    const msg = e?.message || String(e);
+    if (String(e?.code || '').includes('unauthenticated')) {
+      throw new Error('reader-ai требует входа в Firebase. Войди в аккаунт и попробуй ещё раз.');
+    }
+    if (String(e?.code || '').includes('not-found')) {
+      throw new Error(`Firebase функция readerAI не найдена в регионе ${readerFunctionRegion()}. Проверь deploy: firebase deploy --only functions:readerAI`);
+    }
+    throw new Error(`reader-ai Firebase: ${code}${msg}`);
+  }
 }
 
 
@@ -2265,8 +3413,8 @@ function renderReaderAnalysisBlock(data = {}) {
         ${visibleChunks.length ? `<div class="reader-grammar-lines">
           ${visibleChunks.map(ch => `
             <div class="reader-grammar-line">
-              <span class="rg-fr">${readerEscape(ch.fr || '')}</span>
-              <span class="rg-note">${readerEscape([ch.role, ch.grammar].filter(Boolean).join(' · ') || ch.ru || '')}</span>
+              <span class="rg-fr">${readerEscape(ch.fr || ch.zh || ch.text || '')}</span>
+              <span class="rg-note">${readerEscape([ch.role, ch.grammar || ch.pinyin].filter(Boolean).join(' · ') || ch.ru || '')}</span>
             </div>`).join('')}
         </div>` : ''}
         ${notes.length ? `<div class="reader-grammar-notes">${notes.slice(0,4).map(n => `<span>${readerEscape(n)}</span>`).join('')}</div>` : ''}
@@ -2282,7 +3430,7 @@ async function readerAnalyzeParagraphAI(i = null) {
   if (!text || !book || !ch) return;
   showToast('⏳ DeepSeek разбирает предложение...');
   try {
-    const d = await readerAI({ task: 'analyze_sentence', text, sourceLang: 'fr', targetLang: 'ru' });
+    const d = await readerAI({ task: 'analyze_sentence', text, sourceLang: readerBookLang(book), targetLang: 'ru' });
     const payload = d.data || d;
     book.readerAnalyses = book.readerAnalyses || {};
     book.readerAnalyses[`${ch.id}:${index}`] = payload;
@@ -2310,7 +3458,7 @@ async function readerTranslateParagraphAI(i = null) {
   if (!text || !book || !ch) return;
   showToast('⏳ DeepSeek переводит абзац...');
   try {
-    const d = await readerAI({ task: 'translate_paragraph', text, sourceLang: 'fr', targetLang: 'ru' });
+    const d = await readerAI({ task: 'translate_paragraph', text, sourceLang: readerBookLang(book), targetLang: 'ru' });
     const ru = d.ru || d.translation || d.text || '';
     if (!ru) throw new Error('Пустой ответ от DeepSeek');
     book.readerTranslations = book.readerTranslations || {};
@@ -2330,7 +3478,10 @@ async function readerTranslateParagraphAI(i = null) {
   }
 }
 
-async function readerTranslateWordAI(force = true) {
+async function readerTranslateWordAI(forceOrOptions = true) {
+  const opts = (forceOrOptions && typeof forceOrOptions === 'object') ? forceOrOptions : { force: forceOrOptions };
+  const force = opts.force !== false;
+  const skipLocal = !!opts.skipLocal;
   const panel = ensureReaderWordPanel();
   const word = readerSelectedWord;
   const st = panel.querySelector('#reader-word-status');
@@ -2343,10 +3494,10 @@ async function readerTranslateWordAI(force = true) {
       readerRenderWordLoading('⏳ DeepSeek заново разбирает слово...');
       if (st) { st.style.display = 'block'; st.style.color = 'var(--accent)'; st.textContent = '⏳ DeepSeek готовит разбор...'; }
     } else if (st) {
-      st.style.display = 'block'; st.style.color = 'var(--accent)'; st.textContent = '⏳ DeepSeek готовит разбор...';
+      st.style.display = 'block'; st.style.color = 'var(--accent)'; st.textContent = skipLocal ? '⏳ DeepSeek добирает русский смысл...' : '⏳ DeepSeek готовит разбор...';
     }
 
-    if (!force) {
+    if (!force && !skipLocal) {
       const local = await readerLookupWord(word);
       if (local) {
         readerRenderWordAnalysis(local, 'local');
@@ -2355,25 +3506,30 @@ async function readerTranslateWordAI(force = true) {
       }
     }
 
-    const cached = !force ? readerGetCachedLexical(word) : null;
-    if (cached) {
+    const cached = !force ? readerGetCachedLexical(word, readerCurrentLang()) : null;
+    if (cached && (!skipLocal || readerHasRussianMeaning(cached))) {
       readerRenderWordAnalysis(cached, 'cache');
       if (st) { st.style.display = 'block'; st.style.color = 'var(--good)'; st.textContent = '⚡ Из локального кэша'; }
       return cached;
     }
 
-    const context = contextEl?.value || readerSentenceContext(readerCurrentParagraphText(readerSelectedParagraphIndex), word);
-    const inFlightKey = readerLexicalCacheKey(word) + '|' + normalizeImportKey(context.slice(0, 80));
+    const context = contextEl?.value || readerSentenceContext(readerCurrentParagraphText(readerSelectedParagraphIndex), word, readerCurrentLang());
+    const sourceLang = readerCurrentLang();
+    const localZhHint = sourceLang === 'zh' ? (readerLookupChineseWord(word) || readerGetCachedLexical(word, 'zh') || {}) : {};
+    const inFlightKey = readerLexicalCacheKey(word, readerCurrentLang()) + '|' + normalizeImportKey(context.slice(0, 80));
     let data;
     if (!force && readerLexicalInFlight.has(inFlightKey)) {
       data = await readerLexicalInFlight.get(inFlightKey);
     } else {
       const p = readerAI({
         task: 'reader_word',
-      word,
-      surface: word,
-      context,
-      instruction: 'Return JSON only: {pos:"noun|verb|adjective|adverb|preposition|pronoun|other", lemma, infinitive, ru, gender:"m|f|", level:"A1|A2|B1|B2", tense, person, number, form_note, note}. For French conjugated verb forms, lemma and infinitive must be the infinitive; explain the selected surface form in form_note. For nouns, give gender.'
+        sourceLang,
+        word,
+        surface: word,
+        context,
+        instruction: sourceLang === 'zh'
+          ? 'Return JSON only: {pos, lemma, surface, pinyin, ru, level, form_note, note}. For Chinese, give pinyin with tone marks and a short Russian meaning. No gender.'
+          : 'Return JSON only: {pos:"noun|verb|adjective|adverb|preposition|pronoun|other", lemma, infinitive, ru, gender:"m|f|", level:"A1|A2|B1|B2", tense, person, number, form_note, note}. For French conjugated verb forms, lemma and infinitive must be the infinitive; explain the selected surface form in form_note. For nouns, give gender.'
       });
       if (!force) readerLexicalInFlight.set(inFlightKey, p);
       try { data = await p; }
@@ -2384,15 +3540,20 @@ async function readerTranslateWordAI(force = true) {
     const pos = readerSimplifyPos(d.pos || d.type || (d.infinitive || d.inf ? 'verb' : 'noun'));
     const payload = {
       ...d,
+      lang: readerCurrentLang(),
       pos,
       lemma: d.lemma || d.infinitive || d.inf || d.fr || word,
       ru: d.ru || d.translations || d.meaning || d.suggestion || '',
       gender: pos === 'noun' ? (d.gender || '') : '',
-      level: d.level || 'A2',
-      form_note: d.form_note || d.tense || d.note || ''
+      level: d.level || (readerCurrentLang() === 'zh' ? 'HSK?' : 'A2'),
+      pinyin: d.pinyin || d.py || d.pinyin_marked || localZhHint.pinyin || '',
+      en: d.en || d.english || localZhHint.en || localZhHint.english || '',
+      traditional: d.traditional || localZhHint.traditional || '',
+      form_note: d.form_note || d.pinyin || d.tense || d.note || localZhHint.note || ''
     };
-    readerPutCachedLexical(word, payload);
+    readerPutCachedLexical(word, payload, readerCurrentLang());
     readerRenderWordAnalysis(payload, 'deepseek');
+    if (readerCurrentLang() === 'zh') setTimeout(() => { try { renderReaderChapter(); } catch {} }, 0);
     if (st) {
       st.style.display = 'block';
       st.style.color = 'var(--good)';
@@ -2436,6 +3597,7 @@ export function showScreen(id) {
 
   document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  if (id !== 'reader') document.body.classList.remove('reader-mode');
   const target = document.getElementById('screen-' + id);
   if (target) { target.classList.add('active'); target.style.display = ''; }
   // Reset scroll to top on every screen change — prevents landing in empty
@@ -2452,7 +3614,7 @@ export function showScreen(id) {
     if (detailWrap) detailWrap.style.display = 'none';
     if (listWrap) listWrap.style.display = 'block';
   }
-  if (id === 'home')    renderHome(VERBS).catch(e => console.error(e));
+  if (id === 'home')    Promise.resolve(renderHome()).catch(e => console.error(e));
   if (id === 'reader')  renderReaderScreen();
   if (id === 'stats')   {
     // Ensure nouns are loaded so stats show names, not raw ids (n10, n8…)
@@ -2506,8 +3668,8 @@ function updateBottomNav(id) {
 
 // ── Авторизация ──
 export function loginProfile(name) {
-  currentProfile = name.toLowerCase(); setCurrentProfile(currentProfile);
-  try { localStorage.setItem('an2_current_profile', currentProfile); localStorage.setItem('an2_profile_name', currentProfile); } catch {}
+  readerSwitchStorageOwner(isGuest ? 'guest' : ((typeof sbGetCurrentUserId === 'function' ? sbGetCurrentUserId() : null) || sbUser?.uid || sbUser?.id || name || 'anon'));
+  setActiveProfileName(String(name || 'user').toLowerCase(), sbUser || null);
   const brand = document.querySelector('.nav-brand');
   if (brand) brand.innerHTML = 'An II <span style="font-size:0.65rem;opacity:0.6;font-style:normal;margin-left:6px">' + name + '</span>';
   document.getElementById('screen-profile').style.display = 'none';
@@ -2534,6 +3696,7 @@ export async function continueAsGuest() {
     currentProfile = 'guest';
     setCurrentProfile('guest');
     setSbUser(null);
+    readerSwitchStorageOwner('guest');
 
     const brand = document.querySelector('.nav-brand');
     if (brand) brand.innerHTML = 'An II <span style="font-size:0.65rem;opacity:0.6;font-style:normal;margin-left:6px">гость</span>';
@@ -2598,8 +3761,8 @@ export function logoutProfile() {
   isGuest = false;
   localStorage.removeItem('an2_guest');
   stopBackgroundSync();
-  currentProfile = null; setCurrentProfile(null);
-  try { localStorage.removeItem('an2_current_profile'); } catch {}
+  currentProfile = null; setCurrentProfile(null); try { window.an2CurrentProfileName = ''; } catch {}
+  readerSwitchStorageOwner('anon');
   VERBS_LOADED = false;
   PHRASES_LOADED = false;
   VERBS.length = 0;
@@ -2654,71 +3817,53 @@ export async function doLogin() {
   btn.disabled = true;
 
   try {
-    // 1. Authenticate (the only step that MUST block — it's the actual login)
+    // v68.8: вход больше НЕ блокируется загрузкой словаря/профиля/SRS.
+    // Firebase Auth — единственный обязательный шаг. Всё остальное тянем фоном.
     const user = await withDeadline(() => sbSignIn(email, password), AUTH_TIMEOUT_MS, 'Вход');
     setSbUser(user);
 
-    const cachedName = localStorage.getItem('an2_profile_name');
+    const cachedName = getCachedProfileName(user);
+    const safeName = cachedName || email.split('@')[0] || 'user';
+    setActiveProfileName(safeName, user);
 
-    // 2. FAST PATH — this device already has the verb cache.
-    //    Enter the app IMMEDIATELY from local data; pull profile + cloud
-    //    progress in the background. No more waiting on 4 cloud requests
-    //    every single login.
-    if (restoreVerbsFromCache()) {
-      const name = cachedName || email.split('@')[0] || 'user';
-      loginProfile(name);                 // app is usable right now
-      startPhrasesBackgroundLoad();
-      (async () => {
-        try {
-          const profile = await ensureProfileForUser(user, email);
-          if (profile?.username) {
-            currentProfile = profile.username;
-            setCurrentProfile(currentProfile);
-            localStorage.setItem('an2_profile_name', currentProfile);
-          }
-          const [, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
-            runOptional('Глаголы (фон)', () => loadVerbsFromCloud({ force: true }), CORE_LOAD_TIMEOUT_MS),
-            runOptional('Статистика', () => sbLoadStats()),
-            runOptional('SRS', () => sbLoadSRS()),
-            runOptional('Meta', () => sbLoadMeta()),
-          ]);
-          applyCloudProgress(cloudStats, cloudSRS, cloudMeta, { mergeStats: true });
-          flushFailedSync().catch(() => {});
-        } catch (e) {
-          console.warn('[login-bg] cloud sync skipped:', getErrorMessage(e));
-        }
-      })();
-      return; // finally{} still resets the button
+    // Если локального кэша нет — это нормально: v68 перешёл на пустые личные базы.
+    // Не заставляем пользователя смотреть на экран регистрации из-за пустого /userdict.
+    if (!restoreVerbsFromCache()) {
+      VERBS.length = 0;
+      VERBS_LOADED = true;
+      saveCache(VERBS_CACHE_KEY, VERBS);
     }
 
-    // 3. SLOW PATH — first login on this device, no cache yet. Load once.
-    btn.textContent = '⏳ Загружаем данные...';
-    showLoading('Первый вход — загружаем глаголы...');
-
-    const profile = await ensureProfileForUser(user, email);
-    currentProfile = profile.username;
-    setCurrentProfile(currentProfile);
-    localStorage.setItem('an2_profile_name', currentProfile);
-
-    const [verbsOk, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
-      withDeadline(() => loadVerbsFromCloud(), CORE_LOAD_TIMEOUT_MS + 3000, 'Глаголы').catch((e) => {
-        console.error('[login] verbs failed:', getErrorMessage(e));
-        return false;
-      }),
-      runOptional('Статистика', () => sbLoadStats()),
-      runOptional('SRS', () => sbLoadSRS()),
-      runOptional('Meta', () => sbLoadMeta()),
-    ]);
-
-    if (!verbsOk || !VERBS_LOADED) {
-      throw new Error('Вход выполнен, но база глаголов не загрузилась. Проверь сеть/VPN и обнови страницу. Прогресс не тронут.');
-    }
-
-    applyCloudProgress(cloudStats, cloudSRS, cloudMeta);
-    flushFailedSync().catch((e) => console.warn('[sync] flush failed:', getErrorMessage(e)));
-
-    loginProfile(profile.username);
+    loginProfile(currentProfile);
     startPhrasesBackgroundLoad();
+    showToast('✅ Вход выполнен');
+
+    // Фоновая синхронизация: профиль, личный словарь, статистика, SRS, книги.
+    (async () => {
+      try {
+        const profile = await ensureProfileForUser(user, email);
+        if (profile?.username) {
+          setActiveProfileName(profile.username, user);
+          const brand = document.querySelector('.nav-brand');
+          if (brand) brand.innerHTML = 'An II <span style="font-size:0.65rem;opacity:0.6;font-style:normal;margin-left:6px">' + currentProfile + '</span>';
+        }
+        const [verbsOk, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
+          runOptional('Глаголы (фон)', () => loadVerbsFromCloud({ force: true }), CORE_LOAD_TIMEOUT_MS + 3000),
+          runOptional('Статистика', () => sbLoadStats()),
+          runOptional('SRS', () => sbLoadSRS()),
+          runOptional('Meta', () => sbLoadMeta()),
+        ]);
+        applyCloudProgress(cloudStats, cloudSRS, cloudMeta, { mergeStats: true });
+        flushFailedSync().catch(() => {});
+        try {
+          await loadReaderBooksFromCloud(true);
+          if (document.getElementById('screen-home')?.classList.contains('active')) renderHome();
+        } catch {}
+        if (!verbsOk) console.warn('[login-bg] verbs refresh skipped');
+      } catch (e) {
+        console.warn('[login-bg] cloud sync skipped:', getErrorMessage(e));
+      }
+    })();
   } catch(e) {
     showAuthError(normalizeLoginError(e));
   } finally {
@@ -2729,41 +3874,62 @@ export async function doLogin() {
 }
 
 export async function doRegister() {
-  const email = document.getElementById('reg-email').value.trim();
-  const password = document.getElementById('reg-password').value;
-  const username = document.getElementById('reg-username').value.trim();
-  if (!email || !password || !username) { showAuthError('Заполните все поля'); return; }
-  if (password.length < 6) { showAuthError('Пароль минимум 6 символов'); return; }
-
-  const btn = document.getElementById('reg-btn');
+  const email = document.getElementById('reg-email')?.value.trim() || '';
+  const password = document.getElementById('reg-password')?.value || '';
+  const username = document.getElementById('reg-username')?.value.trim() || '';
+  if (!email || !password || !username) { showAuthError('Заполни все поля'); return; }
   if (!isSupabaseReady()) {
     showAuthError('Firebase SDK/Auth не загрузился. Открой firebase-test.html и проверь вход/регистрацию. Если там auth/operation-not-allowed — включи Email/Password в Firebase Authentication.');
     return;
   }
 
+  // v68.9: раньше JS искал #register-btn, а в HTML была кнопка #reg-btn.
+  // Из-за null.textContent регистрация падала ДО try/catch и экран входа
+  // выглядел «застрявшим». Держим оба id, чтобы больше не ловить эту крысу.
+  const btn = document.getElementById('register-btn') || document.getElementById('reg-btn');
   hideAuthMessages();
-  btn.textContent = '⏳ Регистрируем...';
-  btn.disabled = true;
+  if (btn) {
+    btn.textContent = '⏳ Регистрируем...';
+    btn.disabled = true;
+  }
 
   try {
-    const user = await sbSignUp(email, password, username);
-    const el = document.getElementById('auth-success');
-    if (el) {
-      el.textContent = user?.profileWriteError
-        ? 'Аккаунт Firebase создан, но профиль не записался: ' + user.profileWriteError + ' Можно войти, профиль создастся позже.'
-        : 'Аккаунт Firebase создан. Теперь войди обычным входом.';
-      el.style.display = 'block';
-    }
-    const loginEmail = document.getElementById('login-email');
-    const loginPassword = document.getElementById('login-password');
-    if (loginEmail) loginEmail.value = email;
-    if (loginPassword) loginPassword.value = password;
-    switchAuthTab('login');
+    // v68.8: регистрация сразу вводит в приложение. Firebase createUser уже создаёт сессию,
+    // поэтому не оставляем пользователя висеть на вкладке регистрации.
+    const user = await withDeadline(() => sbSignUp(email, password, username), AUTH_TIMEOUT_MS, 'Регистрация');
+    setSbUser(user);
+    setActiveProfileName(username || email.split('@')[0] || 'user', user);
+
+    VERBS.length = 0;
+    VERBS_LOADED = true;
+    saveCache(VERBS_CACHE_KEY, VERBS);
+
+    loginProfile(currentProfile);
+    startPhrasesBackgroundLoad();
+    showToast(user?.profileWriteError ? '✅ Аккаунт создан. Профиль дозапишется позже.' : '✅ Аккаунт создан, вход выполнен');
+
+    (async () => {
+      try {
+        await ensureProfileForUser(user, email);
+        await Promise.all([
+          runOptional('Глаголы (фон)', () => loadVerbsFromCloud({ force: true }), CORE_LOAD_TIMEOUT_MS + 3000),
+          runOptional('Статистика', () => sbLoadStats()),
+          runOptional('SRS', () => sbLoadSRS()),
+          runOptional('Meta', () => sbLoadMeta()),
+        ]);
+        try { await loadReaderBooksFromCloud(true); } catch {}
+      } catch (e) {
+        console.warn('[register-bg] cloud init skipped:', getErrorMessage(e));
+      }
+    })();
   } catch(e) {
     showAuthError(getErrorMessage(e, 'Ошибка регистрации'));
   } finally {
-    btn.textContent = 'Создать аккаунт';
-    btn.disabled = false;
+    if (btn) {
+      btn.textContent = 'Создать аккаунт';
+      btn.disabled = false;
+    }
+    hideLoading();
   }
 }
 
@@ -2931,78 +4097,46 @@ async function init() {
   console.log('[init] session from localStorage/firebase:', !!data.session, '| guest flag:', localStorage.getItem('an2_guest'));
 
   if (data.session) {
+    // v68.8: восстановление сессии тоже не блокируется словарём/профилем.
+    // Если Firebase Auth вернул пользователя — сразу показываем приложение.
     setSbUser(data.session.user);
     const email = data.session.user.email || '';
+    const cachedName = getCachedProfileName(data.session.user);
+    setActiveProfileName(cachedName || email.split('@')[0] || 'user', data.session.user);
 
-    // ── OFFLINE-FIRST RESTORE ──
-    // If this device already has the verb cache, enter the app INSTANTLY from
-    // local data (SRS/stats live in localStorage anyway) and pull the cloud in
-    // the background. The old flow blocked on profile+verbs+stats every launch —
-    // on weak mobile networks that meant a near-eternal "Восстанавливаем сессию".
-    const cachedName = localStorage.getItem('an2_profile_name');
-    if (restoreVerbsFromCache()) {
-      currentProfile = cachedName || email.split('@')[0] || 'user';
-      setCurrentProfile(currentProfile);
-      loginProfile(currentProfile);
-      startPhrasesBackgroundLoad();
-      // Background: refresh profile name, verbs, and merge cloud progress.
-      (async () => {
-        try {
-          const profile = await ensureProfileForUser(data.session.user, email);
-          if (profile?.username) {
-            currentProfile = profile.username;
-            setCurrentProfile(currentProfile);
-            localStorage.setItem('an2_profile_name', currentProfile);
-          }
-          const [, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
-            runOptional('Глаголы (фон)', () => loadVerbsFromCloud({ force: true }), CORE_LOAD_TIMEOUT_MS),
-            runOptional('Статистика', () => sbLoadStats()),
-            runOptional('SRS', () => sbLoadSRS()),
-            runOptional('Meta', () => sbLoadMeta()),
-          ]);
-          applyCloudProgress(cloudStats, cloudSRS, cloudMeta, { mergeStats: true });
-        } catch (e) {
-          console.warn('[restore-bg] cloud sync skipped:', getErrorMessage(e));
+    if (!restoreVerbsFromCache()) {
+      VERBS.length = 0;
+      VERBS_LOADED = true;
+      saveCache(VERBS_CACHE_KEY, VERBS);
+    }
+
+    loginProfile(currentProfile);
+    startPhrasesBackgroundLoad();
+
+    (async () => {
+      try {
+        const profile = await ensureProfileForUser(data.session.user, email);
+        if (profile?.username) {
+          setActiveProfileName(profile.username, user);
+          const brand = document.querySelector('.nav-brand');
+          if (brand) brand.innerHTML = 'An II <span style="font-size:0.65rem;opacity:0.6;font-style:normal;margin-left:6px">' + currentProfile + '</span>';
         }
-      })();
-      return;
-    }
-
-    // First launch on this device (no verb cache yet) — must load with a spinner.
-    showLoading('Восстанавливаем сессию...');
-    try {
-      const profile = await ensureProfileForUser(data.session.user, email);
-      currentProfile = profile.username || email.split('@')[0] || 'user';
-      setCurrentProfile(currentProfile);
-      localStorage.setItem('an2_profile_name', currentProfile);
-
-      showLoading('Загружаем глаголы и прогресс...');
-      const [verbsOk, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
-        withDeadline(() => loadVerbsFromCloud(), CORE_LOAD_TIMEOUT_MS + 3000, 'Глаголы').catch((e) => {
-          console.error('[init] verbs failed:', getErrorMessage(e));
-          return false;
-        }),
-        runOptional('Статистика', () => sbLoadStats()),
-        runOptional('SRS', () => sbLoadSRS()),
-        runOptional('Meta', () => sbLoadMeta()),
-      ]);
-
-      if (!verbsOk || !VERBS_LOADED) {
-        throw new Error('Сессия есть, но база глаголов не загрузилась. Прогресс не тронут.');
+        const [verbsOk, cloudStats, cloudSRS, cloudMeta] = await Promise.all([
+          runOptional('Глаголы (фон)', () => loadVerbsFromCloud({ force: true }), CORE_LOAD_TIMEOUT_MS + 3000),
+          runOptional('Статистика', () => sbLoadStats()),
+          runOptional('SRS', () => sbLoadSRS()),
+          runOptional('Meta', () => sbLoadMeta()),
+        ]);
+        applyCloudProgress(cloudStats, cloudSRS, cloudMeta, { mergeStats: true });
+        try {
+          await loadReaderBooksFromCloud(true);
+          if (document.getElementById('screen-home')?.classList.contains('active')) renderHome();
+        } catch {}
+        if (!verbsOk) console.warn('[restore-bg] verbs refresh skipped');
+      } catch (e) {
+        console.warn('[restore-bg] cloud sync skipped:', getErrorMessage(e));
       }
-
-      applyCloudProgress(cloudStats, cloudSRS, cloudMeta);
-      loginProfile(currentProfile);
-      startPhrasesBackgroundLoad();
-    } catch(e) {
-      console.error('Session restore error:', e);
-      document.getElementById('main-app').style.display = 'none';
-      document.getElementById('screen-profile').style.display = 'flex';
-      switchAuthTab('login');
-      showAuthError(getErrorMessage(e, 'Не удалось восстановить сессию.'));
-    } finally {
-      hideLoading();
-    }
+    })();
     return;
   }
 
@@ -3029,7 +4163,7 @@ init().catch((e) => {
   try { switchAuthTab('login'); } catch (_) {}
   // Show the REAL error text — guessing blind has wasted enough time.
   const msg = (e && (e.message || e.toString())) || 'неизвестная ошибка';
-  showAuthError('Сбой запуска: ' + msg + ' — если недавно обновлял приложение, открой /reset-cache.html и сбрось кэш.');
+  showAuthError('Сбой запуска: ' + msg);
 });
 
 // ── Verb Picker ──
@@ -3529,10 +4663,13 @@ window.toggleRule = function() {
     if (ruleBtn) { ruleBtn.style.borderColor = 'var(--border)'; ruleBtn.style.color = 'var(--text-muted)'; }
   }
 };
-window.renderHome           = () => renderHome(VERBS);
+window.renderHome           = () => renderHome();
 window.renderReaderScreen   = renderReaderScreen;
 window.showReaderImportModal = showReaderImportModal;
 window.closeReaderImportModal = closeReaderImportModal;
+window.readerCurrentLang = readerCurrentLang;
+window.readerBookLang = readerBookLang;
+window.readerTokenizeParagraph = readerTokenizeParagraph;
 window.readerImportFromFile = readerImportFromFile;
 window.saveReaderImport = saveReaderImport;
 window.readerOpenBook = readerOpenBook;
@@ -3544,6 +4681,7 @@ window.readerNextParagraph = readerNextParagraph;
 window.readerSpeakParagraph = readerSpeakParagraph;
 window.readerSpeakCurrentParagraph = readerSpeakCurrentParagraph;
 window.readerSpeakChapter = readerSpeakChapter;
+window.readerSpeakText = readerSpeakText;
 window.readerStopSpeech = readerStopSpeech;
 window.readerCopyParagraph = readerCopyParagraph;
 window.readerCopyCurrentParagraph = readerCopyCurrentParagraph;
@@ -3562,12 +4700,49 @@ window.readerTranslateWordAI = readerTranslateWordAI;
 window.readerTranslateParagraphAI = readerTranslateParagraphAI;
 window.readerAnalyzeParagraphAI = readerAnalyzeParagraphAI;
 window.readerAction = readerAction;
+
+// ── v66 reader: compact controls glue (presentation only) ──
+function readerListenToggle() {
+  const btn = document.getElementById('reader-listen-btn');
+  const resetBtn = () => { const b = document.getElementById('reader-listen-btn'); if (b) { b.classList.remove('playing'); b.innerHTML = '🔊 Слушать'; } };
+  if (typeof readerSpeechActive !== 'undefined' && readerSpeechActive) {
+    readerStopSpeech();
+    resetBtn();
+    clearInterval(window.__readerListenPoll);
+    return;
+  }
+  readerSpeakCurrentParagraph();
+  if (btn) { btn.classList.add('playing'); btn.innerHTML = '⏹ Стоп'; }
+  clearInterval(window.__readerListenPoll);
+  window.__readerListenPoll = setInterval(() => {
+    if (typeof readerSpeechActive === 'undefined' || !readerSpeechActive) {
+      resetBtn();
+      clearInterval(window.__readerListenPoll);
+    }
+  }, 400);
+}
+function readerOpenMoreSheet() {
+  document.getElementById('reader-sheet-back')?.classList.add('show');
+  document.getElementById('reader-more-sheet')?.classList.add('show');
+}
+function readerCloseMoreSheet() {
+  document.getElementById('reader-sheet-back')?.classList.remove('show');
+  document.getElementById('reader-more-sheet')?.classList.remove('show');
+}
+window.readerListenToggle = readerListenToggle;
+window.readerOpenMoreSheet = readerOpenMoreSheet;
+window.readerCloseMoreSheet = readerCloseMoreSheet;
 window.bindReaderParagraphEvents = bindReaderParagraphEvents;
 window.toggleReaderTranslations = toggleReaderTranslations;
 window.syncReaderCloudNow = syncReaderCloudNow;
 window.showReaderViewedWords = showReaderViewedWords;
 window.closeReaderViewedWords = closeReaderViewedWords;
 window.readerMarkSelectedWordKnown = readerMarkSelectedWordKnown;
+window.readerMarkSelectedWordProblem = readerMarkSelectedWordProblem;
+window.readerCycleZhPinyinMode = readerCycleZhPinyinMode;
+window.readerLookupChineseWord = readerLookupChineseWord;
+window.readerEnsureZhCoreJsonLoaded = readerEnsureZhCoreJsonLoaded;
+window.readerZhCoreJsonCount = readerZhCoreJsonCount;
 window.renderStats          = () => renderStats(VERBS, NOUNS);
 window.populateGenVerbList  = populateGenVerbList;
 window.setPhrasesMode       = window.setPhrasesMode || (() => {});
@@ -4251,7 +5426,7 @@ window.nextPhrase = function() {
 // DICTIONARY — Существительные и Предлоги
 // ════════════════════════════════════════════════
 
-let dictType = 'verbs'; // 'verbs' | 'nouns' | 'preps'
+let dictType = 'verbs'; // 'verbs' | 'nouns' | 'preps' | 'zh'
 let dictNounsCache = [];
 let dictPrepsCache = [];
 
@@ -4259,7 +5434,7 @@ window.setDictType = function(type) {
   dictType = type;
 
   // Update tabs
-  ['verbs','nouns','preps'].forEach(t => {
+  ['verbs','nouns','preps','zh'].forEach(t => {
     const btn = document.getElementById(`dict-type-${t}`);
     if (!btn) return;
     btn.style.background = t === type ? 'var(--accent)' : 'none';
@@ -4297,17 +5472,28 @@ window.setDictType = function(type) {
     renderDictWords(type);
   }
 
-  if (manualBtn) manualBtn.style.display = (type === 'verbs' ? 'none' : 'inline-block');
-  if (xlsxBtn) xlsxBtn.style.display = 'inline-block';
+  if (manualBtn) {
+    manualBtn.style.display = (type === 'verbs' ? 'none' : 'inline-block');
+    manualBtn.textContent = type === 'zh' ? '+ Китайское' : '+ Вручную';
+    manualBtn.setAttribute('onclick', type === 'zh' ? 'showManualChineseWordModal()' : 'showManualWordModal()');
+  }
+  if (xlsxBtn) xlsxBtn.style.display = type === 'zh' ? 'none' : 'inline-block';
   if (clearWordsBtn) clearWordsBtn.style.display = (type === 'nouns' && window.isAdmin && window.isAdmin()) ? 'inline-block' : 'none';
 
   // Clear search and reset gen button
   const inp = document.getElementById('dict-search');
-  if (inp) { inp.value = ''; inp.focus(); }
+  if (inp) {
+    inp.value = '';
+    if (type === 'nouns') inp.placeholder = 'Поиск: chien, beau, rapidement...';
+    else if (type === 'preps') inp.placeholder = 'Поиск конструкции: penser à, parler de...';
+    else if (type === 'zh') inp.placeholder = 'Поиск: 塑料布, pinyin, перевод...';
+    else inp.placeholder = 'Поиск глагола...';
+    inp.focus();
+  }
   const clear = document.getElementById('dict-clear');
   if (clear) clear.style.display = 'none';
   const count = document.getElementById('dict-count');
-  if (count) count.textContent = '';
+  if (count && type === 'verbs') count.textContent = '';
 };
 
 window.onDictSearch = function() {
@@ -4320,6 +5506,7 @@ window.onDictSearch = function() {
   if (inp) {
     if (dictType === 'nouns') inp.placeholder = 'Поиск: chien, beau, rapidement...';
     else if (dictType === 'preps') inp.placeholder = 'Поиск глагола: penser, parler, aller...';
+    else if (dictType === 'zh') inp.placeholder = 'Поиск: 塑料布, pinyin, перевод...';
     else inp.placeholder = 'Поиск глагола...';
   }
 
@@ -4330,8 +5517,14 @@ window.onDictSearch = function() {
 
   const genBtn = document.getElementById('dict-gen-btn');
   const manualBtn = document.getElementById('dict-manual-btn');
+  const xlsxBtn = document.getElementById('dict-xlsx-btn');
   if (genBtn) genBtn.style.display = 'none'; // DeepSeek-создание скрыто после переезда на Firebase
-  if (manualBtn) manualBtn.style.display = 'inline-block';
+  if (manualBtn) {
+    manualBtn.style.display = 'inline-block';
+    manualBtn.textContent = dictType === 'zh' ? '+ Китайское' : '+ Вручную';
+    manualBtn.setAttribute('onclick', dictType === 'zh' ? 'showManualChineseWordModal()' : 'showManualWordModal()');
+  }
+  if (xlsxBtn) xlsxBtn.style.display = dictType === 'zh' ? 'none' : 'inline-block';
 
   renderDictWords(dictType, val);
 };
@@ -4341,6 +5534,11 @@ async function renderDictWords(type, search = '') {
   const card = document.getElementById('dict-word-card');
   const count = document.getElementById('dict-count');
   if (!card) return;
+
+  if (type === 'zh') {
+    renderChineseDictWords(search);
+    return;
+  }
 
   const table = type === 'nouns' ? 'nouns' : 'prepositions';
   const cache = type === 'nouns' ? dictNounsCache : dictPrepsCache;
@@ -4407,6 +5605,238 @@ async function renderDictWords(type, search = '') {
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
       ${filtered.map(w => type === 'nouns' ? renderNounListItem(w) : renderPrepListItem(w)).join('')}
     </div>`;
+};
+
+
+// ════════════════════════════════════════════════
+// CHINESE DICTIONARY — отдельный словарь для чтения 中文
+// ════════════════════════════════════════════════
+
+function readerZhEntryFromSources(word, st = null) {
+  const w = readerNormalizeWord(word, 'zh');
+  if (!w) return null;
+  const cached = readerGetCachedLexical(w, 'zh') || {};
+  const local = readerLookupChineseWord(w) || {};
+  const data = { ...local, ...cached };
+  return {
+    word: w,
+    lemma: readerNormalizeWord(data.lemma || data.word || w, 'zh') || w,
+    pinyin: readerExtractPinyin(data),
+    ru: String(data.ru || data.translation || data.meaning_ru || '').trim(),
+    en: String(data.en || data.english || data.gloss || '').trim(),
+    pos: data.pos || data.partOfSpeech || '',
+    level: data.level || data.hsk || '',
+    note: data.note || data.form_note || data._note || '',
+    source: data._source || (local.pinyin ? 'local' : cached.pinyin ? 'cache' : 'state'),
+    state: st || loadReaderWordState()[readerWordStateKey(w, 'zh')] || null
+  };
+}
+
+function readerChineseDictionaryEntries() {
+  const map = new Map();
+  const add = (word, st = null) => {
+    const entry = readerZhEntryFromSources(word, st);
+    if (entry?.word) map.set(entry.word, { ...(map.get(entry.word) || {}), ...entry, state: entry.state || map.get(entry.word)?.state || null });
+  };
+
+  const states = loadReaderWordState();
+  Object.values(states).forEach(st => {
+    if (!st || readerCanonicalLang(st.lang) !== 'zh') return;
+    add(st.word, st);
+  });
+
+  const cache = loadReaderLexicalCache();
+  Object.entries(cache).forEach(([key, item]) => {
+    if (!key.startsWith('zh:') || !item) return;
+    add(item.word || item.surface || item.lemma || key.slice(3), null);
+  });
+
+  return Array.from(map.values()).sort((a,b) => {
+    const ast = a.state || {}, bst = b.state || {};
+    const rank = (st) => st.status === 'problem' || st.status === 'hard' ? 0 : st.status === 'learning' || st.saved ? 1 : st.status === 'familiar' ? 2 : st.status === 'looked' || (st.clicked || 0) > 0 ? 3 : 4;
+    const r = rank(ast) - rank(bst);
+    if (r) return r;
+    return String(a.word).localeCompare(String(b.word), 'zh-Hans-CN');
+  });
+}
+
+function readerSearchZhCoreJson(query, limit = 80) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q || !readerZhCoreJson) return [];
+  const exact = readerLookupChineseJsonEntry(q);
+  const out = [];
+  const seen = new Set();
+  const push = (entry) => {
+    if (!entry?.word || seen.has(entry.word) || out.length >= limit) return;
+    seen.add(entry.word);
+    out.push({ ...entry, state: loadReaderWordState()[readerWordStateKey(entry.word, 'zh')] || null });
+  };
+  if (exact) push(exact);
+  const isHan = /[㐀-鿿]/.test(q);
+  for (const [word, entry] of Object.entries(readerZhCoreJson)) {
+    if (out.length >= limit) break;
+    if (seen.has(word)) continue;
+    if (isHan) {
+      if (word.startsWith(q) || word.includes(q)) push(entry);
+    } else if (q.length >= 2) {
+      const hay = `${entry.pinyin || ''} ${entry.en || entry.english || ''}`.toLowerCase();
+      if (hay.includes(q)) push(entry);
+    }
+  }
+  return out;
+}
+
+function renderChineseDictWords(search = '') {
+  const card = document.getElementById('dict-word-card');
+  const count = document.getElementById('dict-count');
+  if (!card) return;
+  const q = String(search || '').trim().toLowerCase();
+  const entries = readerChineseDictionaryEntries();
+  let filtered = q ? entries.filter(e => [e.word, e.lemma, e.pinyin, e.ru, e.en, e.pos, e.level, readerWordStatusRu(e.state)].some(x => String(x || '').toLowerCase().includes(q))) : entries;
+  if (q && readerZhCoreJson) {
+    const coreHits = readerSearchZhCoreJson(q, 80);
+    const byWord = new Map(filtered.map(e => [e.word, e]));
+    coreHits.forEach(e => { if (!byWord.has(e.word)) byWord.set(e.word, e); });
+    filtered = Array.from(byWord.values());
+  }
+  const coreCount = readerZhCoreJsonCount();
+  if (count) count.textContent = q
+    ? `${filtered.length} найдено · CC-CEDICT ${coreCount || '…'}`
+    : `${filtered.length} личных китайских слов · CC-CEDICT ${coreCount || '…'}`;
+
+  if (!readerZhCoreJson && !readerZhCoreJsonPromise) readerEnsureZhCoreJsonLoaded({ rerender: false }).then(() => { try { if (dictType === 'zh') renderChineseDictWords(search); } catch {} });
+
+  if (!filtered.length && !q) {
+    card.innerHTML = `
+      <div style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+        <div style="font-size:2.5rem;margin-bottom:12px">中文</div>
+        <div style="font-size:0.95rem;font-weight:500;margin-bottom:8px;color:var(--text)">Личный китайский словарь пока пуст</div>
+        <div style="font-size:0.82rem;color:var(--text-dim);margin-bottom:16px">Открывай слова в читалке или ищи по 中文 / pinyin / English fallback в общем CC-CEDICT.</div>
+        <div style="font-size:0.8rem;padding:10px 16px;background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.2);border-radius:8px;color:var(--accent)">Общий словарь нужен для разметки и pinyin; русский смысл добирается через DeepSeek или ручные правки.</div>
+      </div>`;
+    return;
+  }
+  if (!filtered.length && q) {
+    card.innerHTML = `
+      <div style="text-align:center;padding:30px 20px;color:var(--text-muted)">
+        <div style="font-size:0.9rem;margin-bottom:8px">«${readerEscape(search)}» не найдено в китайском словаре</div>
+        <div style="font-size:0.8rem;color:var(--text-dim)">Нажми «+ Китайское» и добавь вручную.</div>
+      </div>`;
+    return;
+  }
+
+  card.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+      ${filtered.map(renderChineseDictListItem).join('')}
+    </div>`;
+}
+
+function renderChineseDictListItem(e) {
+  const st = e.state || {};
+  const status = readerWordStatusRu(st);
+  const statusColor = (st.status === 'problem' || st.status === 'hard') ? 'var(--bad)' : st.known || st.status === 'known' ? 'var(--text-muted)' : st.status === 'familiar' ? 'var(--good)' : st.saved || st.status === 'learning' ? 'var(--blue)' : 'var(--accent)';
+  return `
+    <div onclick="showChineseDictCard('${escapeAttr(e.word)}')"
+      style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s"
+      onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div style="font-family:system-ui,'Noto Sans SC','Microsoft YaHei',sans-serif;font-size:1.25rem;min-width:96px;color:var(--text)">${readerEscape(e.word)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${readerEscape(e.pinyin || '—')}</div>
+        <div style="font-size:0.82rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${readerEscape(e.ru || e.en || 'перевод появится после DeepSeek/ручного добавления')}</div>
+      </div>
+      <div style="font-size:0.68rem;padding:2px 7px;border-radius:10px;border:1px solid ${statusColor};color:${statusColor};white-space:nowrap">${readerEscape(status)}</div>
+    </div>`;
+}
+
+window.showChineseDictCard = function(word) {
+  const card = document.getElementById('dict-word-card');
+  if (!card) return;
+  const entry = readerZhEntryFromSources(word);
+  if (!entry) return;
+  const st = entry.state || {};
+  const status = readerWordStatusRu(st);
+  const sourceLabel = entry.source === 'cc-cedict' ? 'CC-CEDICT/lang_dictionary' : entry.source === 'cc-cedict-full' ? 'CC-CEDICT full' : entry.source === 'zh_core_json' || entry.source === 'reader-core-extra' || entry.source === 'local-core' || entry.source === 'reading-core' ? 'локальный CC-core' : entry.source === 'local' ? 'локальный словарь' : entry.source === 'cache' ? 'кэш разбора' : 'статус чтения';
+  card.innerHTML = `
+    <button onclick="renderDictWords('zh', document.getElementById('dict-search')?.value || '')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.85rem;margin-bottom:14px;padding:0;font-family:'IBM Plex Sans',sans-serif">← Все китайские слова</button>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;">
+      <div style="padding:18px 20px 14px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(212,175,55,0.06) 0%,transparent 60%)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+          <span style="font-family:system-ui,'Noto Sans SC','Microsoft YaHei',sans-serif;font-size:2.2rem;font-weight:600">${readerEscape(entry.word)}</span>
+          <button onclick="window.readerSpeakText('${escapeAttr(entry.word)}',{lang:'zh'})" title="Произнести" style="background:none;border:1px solid var(--border);border-radius:50%;width:32px;height:32px;cursor:pointer;color:var(--text-muted);font-size:0.85rem;flex-shrink:0">🔊</button>
+          ${entry.pos ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:var(--text-muted);background:var(--surface2);border-radius:6px;padding:2px 8px">${readerEscape(readerPosRu(entry.pos))}</span>` : ''}
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:1rem;color:var(--accent);margin-bottom:8px">${readerEscape(entry.pinyin || 'пиньинь не задан')}</div>
+        <div style="font-size:1.05rem;font-weight:500;margin-bottom:8px">${entry.ru ? readerEscape(entry.ru) : '<span style="color:var(--text-muted)">русский перевод не задан</span>'}</div>
+        ${entry.en && !entry.ru ? `<div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:8px">EN fallback: ${readerEscape(entry.en)}</div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:0.7rem;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--text-muted)">${readerEscape(status)}</span>
+          ${entry.level ? `<span style="font-size:0.7rem;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--text-muted)">${readerEscape(entry.level)}</span>` : ''}
+          <span style="font-size:0.7rem;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--text-muted)">${readerEscape(sourceLabel)}</span>
+        </div>
+      </div>
+      ${entry.note ? `<div style="padding:14px 20px;border-bottom:1px solid var(--border);font-size:0.86rem;color:var(--text-muted);line-height:1.5">${readerEscape(entry.note)}</div>` : ''}
+      <div style="padding:14px 20px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="zhDictSetStatus('${escapeAttr(entry.word)}','learning')" class="btn btn-secondary" style="flex:1;min-width:120px">изучаю</button>
+        <button onclick="zhDictSetStatus('${escapeAttr(entry.word)}','problem')" class="btn btn-secondary" style="flex:1;min-width:120px">⚠ проблема</button>
+        <button onclick="zhDictSetStatus('${escapeAttr(entry.word)}','familiar')" class="btn btn-secondary" style="flex:1;min-width:120px">закрепляю</button>
+        <button onclick="zhDictSetStatus('${escapeAttr(entry.word)}','known')" class="btn btn-primary" style="flex:1;min-width:120px">✓ знаю</button>
+        <button onclick="showManualChineseWordModal('${escapeAttr(entry.word)}')" class="btn btn-secondary" style="flex:1;min-width:120px">✏️ править</button>
+        <button onclick="zhDictDeleteWord('${escapeAttr(entry.word)}')" class="btn btn-secondary" style="flex:1;min-width:120px;color:var(--bad);border-color:rgba(166,42,33,.35)">🗑 удалить</button>
+      </div>
+    </div>`;
+};
+
+window.zhDictDeleteWord = function(word) {
+  const w = readerNormalizeWord(word, 'zh');
+  if (!w) return;
+  const state = loadReaderWordState();
+  delete state[readerWordStateKey(w, 'zh')];
+  saveReaderWordState();
+  const cache = loadReaderLexicalCache();
+  delete cache[readerLexicalCacheKey(w, 'zh')];
+  saveReaderLexicalCache();
+  try { renderReaderChapter(); } catch {}
+  dictType = 'zh';
+  renderDictWords('zh', document.getElementById('dict-search')?.value || '');
+  showToast('中文 Удалено из личного китайского словаря');
+};
+
+window.zhDictSetStatus = function(word, status) {
+  const w = readerNormalizeWord(word, 'zh');
+  if (!w) return;
+  const st = readerTouchWordState(w, 'zh');
+  st.saved = status !== 'known';
+  st.known = status === 'known';
+  st.status = status;
+  st.updatedAt = new Date().toISOString();
+  saveReaderWordState();
+  try { renderReaderChapter(); } catch {}
+  window.showChineseDictCard(w);
+};
+
+window.showManualChineseWordModal = function(prefillWord = '') {
+  const w0 = readerNormalizeWord(prefillWord || prompt('Китайское слово / выражение:', '') || '', 'zh');
+  if (!w0) return;
+  const old = readerZhEntryFromSources(w0) || {};
+  const pinyin = prompt('Pinyin:', old.pinyin || '') || old.pinyin || '';
+  const ru = prompt('Русский перевод:', old.ru || '') || old.ru || '';
+  const pos = prompt('Часть речи / пометка:', old.pos || '') || old.pos || '';
+  readerPutCachedLexical(w0, {
+    ...(readerGetCachedLexical(w0, 'zh') || {}),
+    lang: 'zh', word: w0, surface: w0, lemma: w0,
+    pinyin: String(pinyin || '').trim(),
+    ru: String(ru || '').trim(),
+    translation: String(ru || '').trim(),
+    pos: String(pos || '').trim(),
+    _source: 'manual_zh',
+    _note: 'ручная запись китайского словаря'
+  }, 'zh');
+  readerMarkWordSaved(w0, w0, 'zh');
+  try { const st = loadReaderWordState()[readerWordStateKey(w0, 'zh')]; if (st) { st.manual = true; st.updatedAt = new Date().toISOString(); saveReaderWordState(); } } catch {}
+  dictType = 'zh';
+  renderDictWords('zh', document.getElementById('dict-search')?.value || '');
+  showToast('中文 Добавлено в китайский словарь');
+  try { renderReaderChapter(); } catch {}
 };
 
 
@@ -4853,24 +6283,13 @@ window.dictGenerate = async function() {
 
   try {
     const type = dictType === 'preps' ? 'preposition' : 'noun';
-    const res = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/reader-ai`, {
-      method: 'POST',
-      // v49: no custom headers at all; reader-ai parses raw text body.
-      body: JSON.stringify({
-        task: 'reader_word',
-        word,
-        surface: word,
-        type,
-        context: word,
-      })
-    }, LONG_REQUEST_TIMEOUT_MS);
-
-    const raw = await res.text();
-    let parsed = {};
-    try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = { error: raw }; }
-    if (!res.ok) throw new Error(parsed.error || raw || `reader-ai HTTP ${res.status}`);
-
-    const d = parsed.data || parsed;
+    const d = await readerAI({
+      task: 'reader_word',
+      word,
+      surface: word,
+      type,
+      context: word,
+    });
     const pos = d.pos || (type === 'preposition' ? 'preposition' : 'noun');
     const lemma = d.lemma || d.infinitive || d.fr || word;
     const ru = d.ru || d.meaning || d.translation || '';
@@ -5992,3 +7411,254 @@ function __finalizeHandlers() {
 __finalizeHandlers();
 // Defensive: re-run on next tick in case anything assigned late
 setTimeout(__finalizeHandlers, 0);
+
+// ════════════════════════════════════════════════
+// v66.6 — reader: select words → translate selection,
+//          + DeepSeek prefetch (next paragraph) and warm-keep.
+//          All isolated and guarded; never throws into the reader.
+// ════════════════════════════════════════════════
+let readerLastSelection = '';
+const readerSelectionCache = new Map();
+let readerSelUpdateTimer = null;
+
+function readerEnsureSelectionUI() {
+  if (document.getElementById('reader-sel-btn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'reader-sel-btn';
+  btn.type = 'button';
+  btn.textContent = '🌐 Перевести';
+  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); });   // keep the selection alive
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); readerTranslateSelection(); });
+  document.body.appendChild(btn);
+
+  const panel = document.createElement('div');
+  panel.id = 'reader-sel-panel';
+  panel.innerHTML = `
+    <div class="sel-fr" id="reader-sel-fr"></div>
+    <div class="sel-ru" id="reader-sel-ru">—</div>
+    <div class="sel-actions">
+      <button id="reader-sel-speak" type="button">🔊 Озвучить</button>
+      <button id="reader-sel-close" type="button">✕ Закрыть</button>
+    </div>`;
+  document.body.appendChild(panel);
+  panel.querySelector('#reader-sel-speak').addEventListener('click', () => { if (readerLastSelection) readerSpeakText(readerLastSelection); });
+  panel.querySelector('#reader-sel-close').addEventListener('click', readerCloseSelectionPanel);
+}
+
+function readerHideSelectionButton() {
+  document.getElementById('reader-sel-btn')?.classList.remove('show');
+}
+function readerCloseSelectionPanel() {
+  document.getElementById('reader-sel-panel')?.classList.remove('show');
+}
+function readerHideSelectionUI() {
+  readerHideSelectionButton();
+  readerCloseSelectionPanel();
+}
+
+function readerSelectionNodeInside(root, node) {
+  if (!root || !node) return false;
+  const el = node.nodeType === 1 ? node : (node.parentElement || node.parentNode);
+  return !!(el && root.contains(el));
+}
+
+function readerNativeSelectionText() {
+  try {
+    const root = document.getElementById('reader-chapter-text');
+    const view = document.getElementById('reader-reading-view');
+    if (!root || !view || view.style.display === 'none') return '';
+    const sel = window.getSelection?.();
+    const text = sel ? String(sel).replace(/\s+/g, ' ').trim() : '';
+    if (!sel || sel.isCollapsed || !text || !sel.rangeCount) return '';
+    if (!readerSelectionNodeInside(root, sel.anchorNode) && !readerSelectionNodeInside(root, sel.focusNode)) return '';
+    return text;
+  } catch { return ''; }
+}
+
+function readerHasNativeSelectionInReader() {
+  return !!readerNativeSelectionText();
+}
+
+function readerUpdateSelectionButton() {
+  try {
+    const root = document.getElementById('reader-chapter-text');
+    const view = document.getElementById('reader-reading-view');
+    if (!root || !view || view.style.display === 'none') { readerHideSelectionButton(); return; }
+    const sel = window.getSelection?.();
+    const text = readerNativeSelectionText();
+    if (!sel || !text || !sel.rangeCount) { readerHideSelectionButton(); return; }
+    if (text.length > 400) { readerHideSelectionButton(); return; }
+    readerLastSelection = text;
+    readerEnsureSelectionUI();
+    const btn = document.getElementById('reader-sel-btn');
+    let rect; try { rect = sel.getRangeAt(0).getBoundingClientRect(); } catch { rect = null; }
+    if (!rect || (!rect.width && !rect.height)) { readerHideSelectionButton(); return; }
+    const vw = window.innerWidth;
+    let x = Math.max(64, Math.min(vw - 64, rect.left + rect.width / 2));
+    let y = rect.top - 46;
+    if (y < 56) y = rect.bottom + 10;
+    btn.style.left = x + 'px';
+    btn.style.top = y + 'px';
+    btn.classList.add('show');
+  } catch { readerHideSelectionButton(); }
+}
+function readerScheduleSelUpdate() {
+  clearTimeout(readerSelUpdateTimer);
+  readerSelUpdateTimer = setTimeout(readerUpdateSelectionButton, 180);
+}
+
+async function readerTranslateSelection() {
+  const text = (readerLastSelection || '').trim();
+  if (!text) return;
+  if (typeof isGuest !== 'undefined' && isGuest) { showToast('Перевод доступен после входа'); return; }
+  readerHideSelectionButton();
+  readerEnsureSelectionUI();
+  const panel = document.getElementById('reader-sel-panel');
+  const frEl = document.getElementById('reader-sel-fr');
+  const ruEl = document.getElementById('reader-sel-ru');
+  if (frEl) frEl.textContent = text;
+  const key = text.toLowerCase();
+  if (readerSelectionCache.has(key)) {
+    if (ruEl) ruEl.textContent = readerSelectionCache.get(key);
+    panel?.classList.add('show');
+    return;
+  }
+  if (ruEl) ruEl.textContent = '⏳ DeepSeek переводит...';
+  panel?.classList.add('show');
+  try {
+    const d = await readerAI({ task: 'translate_paragraph', text, sourceLang: readerBookLang(readerCurrentBook?.()), targetLang: 'ru' });
+    const ru = d.ru || d.translation || d.text || '';
+    if (!ru) throw new Error('пустой ответ');
+    readerSelectionCache.set(key, ru);
+    if (ruEl) ruEl.textContent = ru;
+  } catch (e) {
+    if (ruEl) ruEl.textContent = '⚠️ Не удалось перевести. ' + (e?.message || '');
+  }
+}
+
+function installReaderSelectionTranslate() {
+  if (window.__readerSelInstalled) return;
+  window.__readerSelInstalled = true;
+  readerEnsureSelectionUI();
+
+  // Native browser selection is the main path. The old custom word-range
+  // fallback remains below, but it must not kill normal text highlighting.
+  document.addEventListener('selectionchange', () => {
+    if (readerHasNativeSelectionInReader()) readerScheduleSelUpdate();
+    else readerHideSelectionButton();
+  });
+  document.addEventListener('mouseup', readerScheduleSelUpdate, true);
+  document.addEventListener('keyup', readerScheduleSelUpdate, true);
+  document.addEventListener('touchend', readerScheduleSelUpdate, true);
+
+  let active = false, decided = false, ranging = false, startWord = null, paraEl = null, sx = 0, sy = 0;
+  const getRoot = () => document.getElementById('reader-chapter-text');
+  const clearWordSel = () => { getRoot()?.querySelectorAll('.rw-sel').forEach(w => w.classList.remove('rw-sel')); };
+  window.readerClearWordSelection = clearWordSel;
+
+  const highlightTo = (curWord) => {
+    if (!paraEl || !startWord) return;
+    const words = Array.from(paraEl.querySelectorAll('.reader-word'));
+    const a = words.indexOf(startWord), b = words.indexOf(curWord);
+    if (a < 0 || b < 0) return;
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    clearWordSel();
+    for (let i = lo; i <= hi; i++) words[i].classList.add('rw-sel');
+  };
+
+  document.addEventListener('pointerdown', (e) => {
+    try {
+      const root = getRoot();
+      const onUI = e.target.closest?.('#reader-sel-btn, #reader-sel-panel');
+      const w = root && e.target.closest?.('.reader-word');
+      if (!onUI) readerHideSelectionButton();
+      if (!onUI && !w) clearWordSel();
+      if (!root || !w || !root.contains(w)) { active = false; return; }
+      clearWordSel();
+      active = true; decided = false; ranging = false; startWord = w;
+      paraEl = w.closest('.reader-paragraph'); sx = e.clientX; sy = e.clientY;
+    } catch { active = false; }
+  }, true);
+
+  document.addEventListener('pointermove', (e) => {
+    if (!active) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!decided) {
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) { decided = true; ranging = true; window.__readerRanging = true; }
+      else if (Math.abs(dy) > 12) { active = false; return; }   // vertical → let it scroll
+      else return;
+    }
+    if (ranging) {
+      // Do not preventDefault here: otherwise the browser cannot do normal
+      // text selection. We still keep the custom word highlight as a fallback.
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const cur = el?.closest?.('.reader-word');
+      if (cur && paraEl && paraEl.contains(cur)) highlightTo(cur);
+    }
+  }, { capture: true, passive: false });
+
+  document.addEventListener('pointerup', () => {
+    try {
+      if (ranging) {
+        const root = getRoot();
+        const sel = root ? Array.from(root.querySelectorAll('.rw-sel')) : [];
+        if (sel.length >= 1) {
+          readerLastSelection = sel.map(x => x.textContent).join(' ').replace(/\s+/g, ' ').trim();
+          window.__readerSuppressWordTap = true;     // this drag must not open the word panel
+          const last = sel[sel.length - 1];
+          const rect = last.getBoundingClientRect();
+          const btn = document.getElementById('reader-sel-btn');
+          if (btn) {
+            const vw = window.innerWidth;
+            btn.style.left = Math.max(64, Math.min(vw - 64, rect.left + rect.width / 2)) + 'px';
+            let y = rect.top - 46; if (y < 56) y = rect.bottom + 10;
+            btn.style.top = y + 'px';
+            btn.classList.add('show');
+          }
+        }
+      }
+    } catch {}
+    active = false; decided = false; ranging = false; startWord = null; paraEl = null;
+    setTimeout(() => { window.__readerRanging = false; }, 80);
+  }, true);
+}
+
+// ── DeepSeek prefetch (next paragraph) ──
+let readerPrefetchTimer = null;
+function readerSchedulePrefetch() {
+  clearTimeout(readerPrefetchTimer);
+  readerPrefetchTimer = setTimeout(() => { readerPrefetchNext().catch(() => {}); }, 800);
+}
+async function readerPrefetchNext() {
+  try {
+    if (typeof isGuest !== 'undefined' && isGuest) return;
+    if (readerTranslationsHidden) return;          // only when translations are actively used
+    const book = readerCurrentBook?.(); if (!book) return;
+    const ch = book.chapters?.[book.currentChapter || 0]; if (!ch) return;
+    const paras = ch.paragraphs || [];
+    const next = (book.currentParagraph || 0) + 1;
+    if (next >= paras.length) return;
+    const key = `${ch.id}:${next}`;
+    book.readerTranslations = book.readerTranslations || {};
+    if (book.readerTranslations[key]) return;       // already cached
+    const text = paras[next]; if (!text) return;
+    const d = await readerAI({ task: 'translate_paragraph', text, sourceLang: readerBookLang(book), targetLang: 'ru' });
+    const ru = d.ru || d.translation || d.text || '';
+    if (ru) { book.readerTranslations[key] = ru; saveReaderBooks(); }
+  } catch {}
+}
+
+// ── DeepSeek warm-keep disabled ──
+// Было: readerAI({ task: 'translate_paragraph', text: 'Bonjour', ... })
+// каждые 4 минуты во время чтения. Это съедало дневной лимит переводов.
+// Функции оставлены как no-op, чтобы не трогать остальную логику читалки.
+let readerWarmTimer = null;
+function readerWarmPing() {
+  return;
+}
+function readerStartWarm() {
+  readerStopWarm();
+}
+function readerStopWarm() {
+  if (readerWarmTimer) { clearInterval(readerWarmTimer); readerWarmTimer = null; }
+}
